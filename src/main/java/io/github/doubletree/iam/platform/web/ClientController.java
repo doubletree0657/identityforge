@@ -6,14 +6,13 @@ import io.github.doubletree.iam.platform.domain.Client;
 import io.github.doubletree.iam.platform.web.dto.ClientResponse;
 import io.github.doubletree.iam.platform.web.dto.ClientSecretResponse;
 import io.github.doubletree.iam.platform.web.dto.CreateClientRequest;
+import io.github.doubletree.iam.platform.web.dto.PageResponse;
 import io.github.doubletree.iam.platform.web.dto.UpdateClientRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -57,13 +56,11 @@ public class ClientController {
 
     @GetMapping
     @Operation(summary = "List clients", description = "Requires iam.read scope.")
-    public List<ClientResponse> listClients(
+    public PageResponse<ClientResponse> listClients(
             @RequestParam(required = false) UUID tenantId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return clientApplicationService.listClients(tenantId, PageRequest.of(page, size)).stream()
-                .map(ClientResponse::from)
-                .toList();
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_PAGE) int page,
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_SIZE) int size) {
+        return PageResponse.from(clientApplicationService.listClients(tenantId, SafePageRequest.of(page, size)), ClientResponse::from);
     }
 
     @GetMapping("/{clientId}")

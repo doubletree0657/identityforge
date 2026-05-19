@@ -3,6 +3,7 @@ package io.github.doubletree.iam.platform.application.service;
 import io.github.doubletree.iam.platform.application.exception.EntityNotFoundException;
 import io.github.doubletree.iam.platform.application.exception.PasswordValidationException;
 import io.github.doubletree.iam.platform.application.exception.TenantBoundaryViolationException;
+import io.github.doubletree.iam.platform.application.exception.ValidationException;
 import io.github.doubletree.iam.platform.domain.AccountStatus;
 import io.github.doubletree.iam.platform.domain.PasswordCredential;
 import io.github.doubletree.iam.platform.domain.Role;
@@ -153,9 +154,9 @@ public class UserApplicationService {
 
     @Transactional(readOnly = true)
     public UserProfile findProfileByUserId(UUID userId) {
-        ensureUserExists(userId);
+        User user = loadUser(userId);
         return userProfileRepository.findByUserId(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User profile not found for user: " + userId));
+                .orElseGet(() -> UserProfile.create(user));
     }
 
     @Transactional
@@ -292,20 +293,20 @@ public class UserApplicationService {
 
     private void validateAttribute(String name, String value, UserAttributeValueType valueType) {
         if (name == null || name.isBlank()) {
-            throw new PasswordValidationException("Attribute name must be provided");
+            throw new ValidationException("Attribute name must be provided");
         }
         if (value == null) {
-            throw new PasswordValidationException("Attribute value must be provided");
+            throw new ValidationException("Attribute value must be provided");
         }
         if (valueType == null) {
-            throw new PasswordValidationException("Attribute value type must be provided");
+            throw new ValidationException("Attribute value type must be provided");
         }
         String normalizedName = name.toLowerCase(Locale.ROOT);
         if (normalizedName.contains("password")
                 || normalizedName.contains("secret")
                 || normalizedName.contains("token")
                 || normalizedName.contains("credential")) {
-            throw new PasswordValidationException("Secret-like values must not be stored as user attributes");
+            throw new ValidationException("Secret-like values must not be stored as user attributes");
         }
     }
 }

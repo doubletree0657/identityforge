@@ -3,15 +3,14 @@ package io.github.doubletree.iam.platform.web;
 import io.github.doubletree.iam.platform.application.service.RoleApplicationService;
 import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.web.dto.CreateRoleRequest;
+import io.github.doubletree.iam.platform.web.dto.PageResponse;
 import io.github.doubletree.iam.platform.web.dto.RoleResponse;
 import io.github.doubletree.iam.platform.web.dto.UpdateRoleRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,13 +45,11 @@ public class RoleController {
 
     @GetMapping
     @Operation(summary = "List roles", description = "Requires iam.read scope.")
-    public List<RoleResponse> listRoles(
+    public PageResponse<RoleResponse> listRoles(
             @RequestParam(required = false) UUID tenantId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return roleApplicationService.listRoles(tenantId, PageRequest.of(page, size)).stream()
-                .map(RoleResponse::from)
-                .toList();
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_PAGE) int page,
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_SIZE) int size) {
+        return PageResponse.from(roleApplicationService.listRoles(tenantId, SafePageRequest.of(page, size)), RoleResponse::from);
     }
 
     @GetMapping("/{roleId}")
@@ -63,7 +60,7 @@ public class RoleController {
 
     @PutMapping("/{roleId}")
     @Operation(summary = "Update role", description = "Requires iam.write scope.")
-    public RoleResponse updateRole(@PathVariable UUID roleId, @RequestBody UpdateRoleRequest request) {
+    public RoleResponse updateRole(@PathVariable UUID roleId, @Valid @RequestBody UpdateRoleRequest request) {
         return RoleResponse.from(roleApplicationService.updateRole(roleId, request.name()));
     }
 

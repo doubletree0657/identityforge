@@ -29,6 +29,9 @@ The codebase currently includes:
 - Backend Admin APIs for a future React Admin Console, covering tenants, users,
   profiles, custom attributes, groups, roles, permissions, OAuth2 clients, TOTP
   operations, and audit log queries.
+- Hardened Admin API contracts with paginated responses, bounded page sizes,
+  stronger request validation, safer default user profile reads, tenant slug
+  uniqueness checks, and cleaner validation errors.
 - Repository-backed Spring Authorization Server `RegisteredClientRepository`
   integration for persisted OAuth2 client registrations.
 - End-to-end OAuth2 authorization-code login flow using local users,
@@ -158,11 +161,16 @@ Completed slices:
 - OAuth2 client list/detail APIs using safe DTOs.
 - TOTP enrollment, verification, and disable endpoints.
 - Audit log query API with simple filters and pagination.
+- Frontend-ready paginated response metadata for primary list APIs.
+- Bounded pagination and practical DTO validation.
+- Empty/default profile response when a user exists but has no stored profile.
+- Tenant slug duplicate rejection and generic validation errors for non-password
+  admin validation failures.
 
 Candidate slices:
 
 - Admin Console frontend.
-- Richer pagination metadata and search filters.
+- Richer search filters.
 - More complete lifecycle workflows for account state, group ownership, and
   delegated administration.
 

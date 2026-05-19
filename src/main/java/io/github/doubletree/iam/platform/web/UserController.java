@@ -5,6 +5,7 @@ import io.github.doubletree.iam.platform.domain.User;
 import io.github.doubletree.iam.platform.domain.UserAttribute;
 import io.github.doubletree.iam.platform.domain.UserProfile;
 import io.github.doubletree.iam.platform.web.dto.CreateUserRequest;
+import io.github.doubletree.iam.platform.web.dto.PageResponse;
 import io.github.doubletree.iam.platform.web.dto.SetUserAttributeRequest;
 import io.github.doubletree.iam.platform.web.dto.UpdateUserProfileRequest;
 import io.github.doubletree.iam.platform.web.dto.UpdateUserPasswordRequest;
@@ -18,7 +19,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,13 +53,11 @@ public class UserController {
 
     @GetMapping
     @Operation(summary = "List users", description = "Requires iam.read scope.")
-    public List<UserResponse> listUsers(
+    public PageResponse<UserResponse> listUsers(
             @RequestParam(required = false) UUID tenantId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return userApplicationService.listUsers(tenantId, PageRequest.of(page, size)).stream()
-                .map(UserResponse::from)
-                .toList();
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_PAGE) int page,
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_SIZE) int size) {
+        return PageResponse.from(userApplicationService.listUsers(tenantId, SafePageRequest.of(page, size)), UserResponse::from);
     }
 
     @GetMapping("/{userId}")
@@ -71,7 +69,7 @@ public class UserController {
 
     @PutMapping("/{userId}")
     @Operation(summary = "Update user", description = "Requires iam.write scope.")
-    public UserResponse updateUser(@PathVariable UUID userId, @RequestBody UpdateUserRequest request) {
+    public UserResponse updateUser(@PathVariable UUID userId, @Valid @RequestBody UpdateUserRequest request) {
         User user = userApplicationService.updateUser(
                 userId,
                 request.displayName(),
@@ -119,7 +117,7 @@ public class UserController {
     @Operation(summary = "Update user profile", description = "Requires iam.write scope.")
     public UserProfileResponse updateProfile(
             @PathVariable UUID userId,
-            @RequestBody UpdateUserProfileRequest request) {
+            @Valid @RequestBody UpdateUserProfileRequest request) {
         UserProfile profile = userApplicationService.updateProfile(
                 userId,
                 request.givenName(),

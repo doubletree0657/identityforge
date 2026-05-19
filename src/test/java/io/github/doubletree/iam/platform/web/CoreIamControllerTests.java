@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import io.github.doubletree.iam.platform.application.exception.ClientValidationException;
 import io.github.doubletree.iam.platform.application.exception.PasswordValidationException;
+import io.github.doubletree.iam.platform.application.exception.ValidationException;
 import io.github.doubletree.iam.platform.application.result.ClientSecretResult;
 import io.github.doubletree.iam.platform.application.result.MfaEnrollmentResult;
 import io.github.doubletree.iam.platform.authorization.AuthorizationServerConfiguration;
@@ -51,6 +52,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -140,13 +142,29 @@ class CoreIamControllerTests {
     @Test
     void listsTenantsWithReadScope() throws Exception {
         when(tenantApplicationService.listTenants(any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(tenant("Acme"))));
+                .thenReturn(pageOf(tenant("Acme")));
 
         mockMvc.perform(get("/api/tenants")
                         .with(readScopeJwt))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(TENANT_ID.toString()))
-                .andExpect(jsonPath("$[0].name").value("Acme"));
+                .andExpect(jsonPath("$.items[0].id").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items[0].name").value("Acme"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(50))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.hasPrevious").value(false));
+    }
+
+    @Test
+    void rejectsOversizedPageRequests() throws Exception {
+        mockMvc.perform(get("/api/tenants")
+                        .queryParam("size", "101")
+                        .with(readScopeJwt))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"))
+                .andExpect(jsonPath("$.message").value("Page size must be less than or equal to 100"));
     }
 
     @Test
@@ -172,6 +190,22 @@ class CoreIamControllerTests {
                 .andExpect(jsonPath("$.name").value("Acme Updated"))
                 .andExpect(jsonPath("$.slug").value("acme-updated"))
                 .andExpect(jsonPath("$.status").value("SUSPENDED"));
+    }
+
+    @Test
+    void duplicateTenantSlugReturnsValidationError() throws Exception {
+        when(tenantApplicationService.createTenant(eq("Acme")))
+                .thenThrow(new ValidationException("Tenant slug already exists: acme"));
+
+        mockMvc.perform(post("/api/tenants")
+                        .with(writeScopeJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Acme"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"))
+                .andExpect(jsonPath("$.message").value("Tenant slug already exists: acme"));
     }
 
     @Test
@@ -201,14 +235,15 @@ class CoreIamControllerTests {
     @Test
     void listsUsersFilteredByTenant() throws Exception {
         when(userApplicationService.listUsers(eq(TENANT_ID), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(user("alice", "Alice Example"))));
+                .thenReturn(pageOf(user("alice", "Alice Example")));
 
         mockMvc.perform(get("/api/users")
                         .queryParam("tenantId", TENANT_ID.toString())
                         .with(readScopeJwt))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(USER_ID.toString()))
-                .andExpect(jsonPath("$[0].passwordHash").doesNotExist());
+                .andExpect(jsonPath("$.items[0].id").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.items[0].passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test
@@ -243,6 +278,18 @@ class CoreIamControllerTests {
                 .andExpect(jsonPath("$.displayName").value("Alice Updated"))
                 .andExpect(jsonPath("$.email").value("alice@example.test"))
                 .andExpect(jsonPath("$.passwordHash").doesNotExist());
+    }
+
+    @Test
+    void invalidUpdateUserInputReturnsBadRequest() throws Exception {
+        mockMvc.perform(put("/api/users/{userId}", USER_ID)
+                        .with(writeScopeJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"not-an-email"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"));
     }
 
     @Test
@@ -424,6 +471,30 @@ class CoreIamControllerTests {
     }
 
     @Test
+    void readsDefaultProfileWhenUserHasNoProfileYet() throws Exception {
+        when(userApplicationService.findProfileByUserId(eq(USER_ID)))
+                .thenReturn(UserProfile.create(user("empty-profile-user", "Empty Profile User")));
+
+        mockMvc.perform(get("/api/users/{userId}/profile", USER_ID)
+                        .with(readScopeJwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.givenName").doesNotExist())
+                .andExpect(jsonPath("$.totpSecret").doesNotExist());
+    }
+
+    @Test
+    void missingUserProfileForMissingUserReturnsNotFound() throws Exception {
+        when(userApplicationService.findProfileByUserId(eq(USER_ID)))
+                .thenThrow(new EntityNotFoundException("User not found: " + USER_ID));
+
+        mockMvc.perform(get("/api/users/{userId}/profile", USER_ID)
+                        .with(readScopeJwt))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("not_found"));
+    }
+
+    @Test
     void managesUserAttributesWithoutSecrets() throws Exception {
         when(userApplicationService.setAttribute(eq(USER_ID), eq("costCenter"), eq("PLATFORM"),
                 eq(UserAttributeValueType.STRING)))
@@ -446,6 +517,26 @@ class CoreIamControllerTests {
     }
 
     @Test
+    void secretLikeUserAttributeNamesReturnGenericValidationError() throws Exception {
+        when(userApplicationService.setAttribute(eq(USER_ID), eq("apiSecret"), eq("sensitive"),
+                eq(UserAttributeValueType.STRING)))
+                .thenThrow(new ValidationException("Secret-like values must not be stored as user attributes"));
+
+        mockMvc.perform(put("/api/users/{userId}/attributes/{name}", USER_ID, "apiSecret")
+                        .with(writeScopeJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "value":"sensitive",
+                                  "valueType":"STRING"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"))
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.not("password_validation_error")));
+    }
+
+    @Test
     void assignsPermissionToRole() throws Exception {
         Role role = role("auditor");
         role.getPermissions().add(permission("users:read"));
@@ -462,16 +553,18 @@ class CoreIamControllerTests {
     @Test
     void listsRolesAndPermissions() throws Exception {
         when(roleApplicationService.listRoles(eq(TENANT_ID), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(role("admin"))));
+                .thenReturn(pageOf(role("admin")));
         when(permissionApplicationService.listPermissions(eq(TENANT_ID), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(permission("users:read"))));
+                .thenReturn(pageOf(permission("users:read")));
 
         mockMvc.perform(get("/api/roles").queryParam("tenantId", TENANT_ID.toString()).with(readScopeJwt))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(ROLE_ID.toString()));
+                .andExpect(jsonPath("$.items[0].id").value(ROLE_ID.toString()))
+                .andExpect(jsonPath("$.totalElements").value(1));
         mockMvc.perform(get("/api/permissions").queryParam("tenantId", TENANT_ID.toString()).with(readScopeJwt))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(PERMISSION_ID.toString()));
+                .andExpect(jsonPath("$.items[0].id").value(PERMISSION_ID.toString()))
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test
@@ -515,15 +608,16 @@ class CoreIamControllerTests {
         Client client = client("portal", "Portal");
         client.setClientSecretHash("{bcrypt}sensitive-client-secret-hash");
         when(clientApplicationService.listClients(eq(TENANT_ID), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(client)));
+                .thenReturn(pageOf(client));
         when(clientApplicationService.findClient(eq(CLIENT_ID)))
                 .thenReturn(client);
 
         mockMvc.perform(get("/api/clients").queryParam("tenantId", TENANT_ID.toString()).with(readScopeJwt))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(CLIENT_ID.toString()))
-                .andExpect(jsonPath("$[0].clientSecretHash").doesNotExist())
-                .andExpect(jsonPath("$[0].clientSecret").doesNotExist());
+                .andExpect(jsonPath("$.items[0].id").value(CLIENT_ID.toString()))
+                .andExpect(jsonPath("$.items[0].clientSecretHash").doesNotExist())
+                .andExpect(jsonPath("$.items[0].clientSecret").doesNotExist())
+                .andExpect(jsonPath("$.totalElements").value(1));
         mockMvc.perform(get("/api/clients/{clientId}", CLIENT_ID).with(readScopeJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(CLIENT_ID.toString()))
@@ -748,6 +842,8 @@ class CoreIamControllerTests {
                 .thenReturn(group);
         when(groupApplicationService.findGroup(eq(GROUP_ID)))
                 .thenReturn(group);
+        when(groupApplicationService.listGroups(eq(TENANT_ID), any(Pageable.class)))
+                .thenReturn(pageOf(group));
 
         mockMvc.perform(post("/api/groups")
                         .with(writeScopeJwt)
@@ -766,6 +862,10 @@ class CoreIamControllerTests {
         mockMvc.perform(post("/api/groups/{groupId}/members/{userId}", GROUP_ID, USER_ID).with(writeScopeJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.memberIds[0]").value(USER_ID.toString()));
+        mockMvc.perform(get("/api/groups").queryParam("tenantId", TENANT_ID.toString()).with(readScopeJwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(GROUP_ID.toString()))
+                .andExpect(jsonPath("$.totalElements").value(1));
         mockMvc.perform(get("/api/groups/{groupId}/members", GROUP_ID).with(readScopeJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(USER_ID.toString()));
@@ -799,7 +899,7 @@ class CoreIamControllerTests {
     void queriesAuditLogsWithoutSecretFields() throws Exception {
         when(auditApplicationService.listAuditLogs(eq(TENANT_ID), eq("USER_PASSWORD_SET"), eq("USER"),
                 eq(USER_ID), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(auditLog())));
+                .thenReturn(pageOf(auditLog()));
 
         mockMvc.perform(get("/api/audit-logs")
                         .queryParam("tenantId", TENANT_ID.toString())
@@ -808,12 +908,13 @@ class CoreIamControllerTests {
                         .queryParam("resourceId", USER_ID.toString())
                         .with(readScopeJwt))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(AUDIT_ID.toString()))
-                .andExpect(jsonPath("$[0].action").value("USER_PASSWORD_SET"))
-                .andExpect(jsonPath("$[0].password").doesNotExist())
-                .andExpect(jsonPath("$[0].clientSecret").doesNotExist())
-                .andExpect(jsonPath("$[0].totpSecret").doesNotExist())
-                .andExpect(jsonPath("$[0].accessToken").doesNotExist());
+                .andExpect(jsonPath("$.items[0].id").value(AUDIT_ID.toString()))
+                .andExpect(jsonPath("$.items[0].action").value("USER_PASSWORD_SET"))
+                .andExpect(jsonPath("$.items[0].password").doesNotExist())
+                .andExpect(jsonPath("$.items[0].clientSecret").doesNotExist())
+                .andExpect(jsonPath("$.items[0].totpSecret").doesNotExist())
+                .andExpect(jsonPath("$.items[0].accessToken").doesNotExist())
+                .andExpect(jsonPath("$.totalElements").value(1));
     }
 
     @Test
@@ -916,6 +1017,10 @@ class CoreIamControllerTests {
         Group group = Group.create(tenant("Test Tenant"), name);
         group.setId(GROUP_ID);
         return group;
+    }
+
+    private <T> PageImpl<T> pageOf(T item) {
+        return new PageImpl<>(List.of(item), PageRequest.of(0, 50), 1);
     }
 
     private UserProfile profile(User user) {

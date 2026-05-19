@@ -4,6 +4,7 @@ import io.github.doubletree.iam.platform.application.exception.ClientValidationE
 import io.github.doubletree.iam.platform.application.exception.EntityNotFoundException;
 import io.github.doubletree.iam.platform.application.exception.PasswordValidationException;
 import io.github.doubletree.iam.platform.application.exception.TenantBoundaryViolationException;
+import io.github.doubletree.iam.platform.application.exception.ValidationException;
 import io.github.doubletree.iam.platform.web.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -36,6 +37,12 @@ public class RestExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ErrorResponse handleClientValidation(ClientValidationException exception) {
         return new ErrorResponse("client_validation_error", exception.getMessage());
+    }
+
+    @ExceptionHandler(ValidationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleValidation(ValidationException exception) {
+        return new ErrorResponse("validation_error", exception.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

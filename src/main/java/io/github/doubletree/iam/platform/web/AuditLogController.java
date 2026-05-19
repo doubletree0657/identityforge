@@ -2,12 +2,11 @@ package io.github.doubletree.iam.platform.web;
 
 import io.github.doubletree.iam.platform.application.service.AuditApplicationService;
 import io.github.doubletree.iam.platform.web.dto.AuditLogResponse;
+import io.github.doubletree.iam.platform.web.dto.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,16 +27,20 @@ public class AuditLogController {
 
     @GetMapping
     @Operation(summary = "List audit logs", description = "Requires iam.read scope.")
-    public List<AuditLogResponse> listAuditLogs(
+    public PageResponse<AuditLogResponse> listAuditLogs(
             @RequestParam(required = false) UUID tenantId,
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String resourceType,
             @RequestParam(required = false) UUID resourceId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return auditApplicationService.listAuditLogs(tenantId, action, resourceType, resourceId, pageRequest).stream()
-                .map(AuditLogResponse::from)
-                .toList();
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_PAGE) int page,
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_SIZE) int size) {
+        return PageResponse.from(
+                auditApplicationService.listAuditLogs(
+                        tenantId,
+                        action,
+                        resourceType,
+                        resourceId,
+                        SafePageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))),
+                AuditLogResponse::from);
     }
 }

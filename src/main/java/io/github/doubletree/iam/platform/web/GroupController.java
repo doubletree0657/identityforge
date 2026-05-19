@@ -4,6 +4,7 @@ import io.github.doubletree.iam.platform.application.service.GroupApplicationSer
 import io.github.doubletree.iam.platform.domain.Group;
 import io.github.doubletree.iam.platform.web.dto.CreateGroupRequest;
 import io.github.doubletree.iam.platform.web.dto.GroupResponse;
+import io.github.doubletree.iam.platform.web.dto.PageResponse;
 import io.github.doubletree.iam.platform.web.dto.UpdateGroupRequest;
 import io.github.doubletree.iam.platform.web.dto.UserResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,7 +13,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,13 +39,11 @@ public class GroupController {
 
     @GetMapping
     @Operation(summary = "List groups", description = "Requires iam.read scope.")
-    public List<GroupResponse> listGroups(
+    public PageResponse<GroupResponse> listGroups(
             @RequestParam(required = false) UUID tenantId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return groupApplicationService.listGroups(tenantId, PageRequest.of(page, size)).stream()
-                .map(GroupResponse::from)
-                .toList();
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_PAGE) int page,
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_SIZE) int size) {
+        return PageResponse.from(groupApplicationService.listGroups(tenantId, SafePageRequest.of(page, size)), GroupResponse::from);
     }
 
     @GetMapping("/{groupId}")
@@ -65,7 +63,7 @@ public class GroupController {
 
     @PutMapping("/{groupId}")
     @Operation(summary = "Update group", description = "Requires iam.write scope.")
-    public GroupResponse updateGroup(@PathVariable UUID groupId, @RequestBody UpdateGroupRequest request) {
+    public GroupResponse updateGroup(@PathVariable UUID groupId, @Valid @RequestBody UpdateGroupRequest request) {
         return GroupResponse.from(groupApplicationService.updateGroup(
                 groupId,
                 request.name(),

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.github.doubletree.iam.platform.application.exception.ClientValidationException;
 import io.github.doubletree.iam.platform.application.exception.PasswordValidationException;
 import io.github.doubletree.iam.platform.application.exception.TenantBoundaryViolationException;
+import io.github.doubletree.iam.platform.application.exception.ValidationException;
 import io.github.doubletree.iam.platform.application.result.ClientSecretResult;
 import io.github.doubletree.iam.platform.application.result.MfaEnrollmentResult;
 import io.github.doubletree.iam.platform.domain.AccountStatus;
@@ -21,6 +22,7 @@ import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.TotpCredential;
 import io.github.doubletree.iam.platform.domain.User;
+import io.github.doubletree.iam.platform.domain.UserAttributeValueType;
 import io.github.doubletree.iam.platform.repository.AuditLogRepository;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.repository.GroupRepository;
@@ -142,6 +144,49 @@ class ApplicationServiceTests {
         Tenant loadedTenant = tenantRepository.findById(tenant.getId()).orElseThrow();
 
         assertThat(loadedTenant.getName()).isEqualTo("Acme");
+        assertThat(loadedTenant.getSlug()).isEqualTo("acme");
+    }
+
+    @Test
+    void rejectsDuplicateTenantSlugOnCreate() {
+        tenantApplicationService.createTenant("Duplicate Tenant");
+
+        assertThatThrownBy(() -> tenantApplicationService.createTenant("Duplicate Tenant"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("Tenant slug already exists: duplicate-tenant");
+    }
+
+    @Test
+    void rejectsUpdatingTenantSlugToAnotherTenantSlug() {
+        Tenant firstTenant = tenantApplicationService.createTenant("First Tenant");
+        Tenant secondTenant = tenantApplicationService.createTenant("Second Tenant");
+
+        assertThatThrownBy(() -> tenantApplicationService.updateTenant(
+                        secondTenant.getId(), null, firstTenant.getSlug(), null))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("Tenant slug already exists: first-tenant");
+    }
+
+    @Test
+    void allowsUpdatingTenantWithoutChangingSlug() {
+        Tenant tenant = tenantApplicationService.createTenant("Stable Tenant");
+
+        Tenant updatedTenant = tenantApplicationService.updateTenant(
+                tenant.getId(), "Stable Tenant Updated", tenant.getSlug(), null);
+
+        assertThat(updatedTenant.getSlug()).isEqualTo("stable-tenant");
+        assertThat(updatedTenant.getName()).isEqualTo("Stable Tenant Updated");
+    }
+
+    @Test
+    void rejectsSecretLikeUserAttributeNamesWithGenericValidationException() {
+        Tenant tenant = tenantApplicationService.createTenant("Attribute Validation Tenant");
+        User user = userApplicationService.createUser(tenant.getId(), "attribute-user", "Attribute User");
+
+        assertThatThrownBy(() -> userApplicationService.setAttribute(
+                        user.getId(), "apiSecret", "sensitive", UserAttributeValueType.STRING))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("Secret-like values must not be stored as user attributes");
     }
 
     @Test
@@ -171,6 +216,18 @@ class ApplicationServiceTests {
         assertThat(loadedUser.getDisplayName()).isEqualTo("Alice Example");
         assertThat(loadedUser.getAccountStatus()).isEqualTo(AccountStatus.PENDING);
         assertThat(loadedUser.getPasswordCredential()).isNull();
+    }
+
+    @Test
+    void profileLookupReturnsDefaultProfileWhenUserHasNoProfileYet() {
+        Tenant tenant = tenantApplicationService.createTenant("Default Profile Tenant");
+        User user = userApplicationService.createUser(tenant.getId(), "profile-user", "Profile User");
+
+        var profile = userApplicationService.findProfileByUserId(user.getId());
+
+        assertThat(profile.getId()).isNull();
+        assertThat(profile.getUser().getId()).isEqualTo(user.getId());
+        assertThat(profile.getGivenName()).isNull();
     }
 
     @Test

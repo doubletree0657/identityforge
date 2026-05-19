@@ -1,12 +1,14 @@
 package io.github.doubletree.iam.platform.web.dto;
 
 import io.github.doubletree.iam.platform.domain.AccountStatus;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Size;
 
 public record UpdateUserRequest(
-        String displayName,
-        String email,
+        @Size(min = 1, max = 160) String displayName,
+        @Email @Size(max = 254) String email,
         Boolean emailVerified,
-        String phoneNumber,
+        @Size(max = 40) String phoneNumber,
         Boolean phoneNumberVerified,
         AccountStatus accountStatus) {
 }

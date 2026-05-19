@@ -1,9 +1,11 @@
 package io.github.doubletree.iam.platform.application.service;
 
 import io.github.doubletree.iam.platform.application.exception.EntityNotFoundException;
+import io.github.doubletree.iam.platform.application.exception.ValidationException;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.TenantStatus;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
+import java.util.Locale;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,7 +25,11 @@ public class TenantApplicationService {
 
     @Transactional
     public Tenant createTenant(String name) {
-        Tenant tenant = tenantRepository.save(Tenant.create(name));
+        String slug = slugify(name);
+        ensureSlugAvailable(slug, null);
+        Tenant candidate = Tenant.create(name);
+        candidate.setSlug(slug);
+        Tenant tenant = tenantRepository.save(candidate);
         auditApplicationService.recordEvent(tenant.getId(), "TENANT_CREATED", "TENANT", tenant.getId());
         return tenant;
     }
@@ -46,6 +52,7 @@ public class TenantApplicationService {
             tenant.setName(name);
         }
         if (slug != null) {
+            ensureSlugAvailable(slug, tenant.getId());
             tenant.setSlug(slug);
         }
         if (status != null) {
@@ -54,5 +61,19 @@ public class TenantApplicationService {
         Tenant savedTenant = tenantRepository.save(tenant);
         auditApplicationService.recordEvent(savedTenant.getId(), "TENANT_UPDATED", "TENANT", savedTenant.getId());
         return savedTenant;
+    }
+
+    private void ensureSlugAvailable(String slug, UUID currentTenantId) {
+        tenantRepository.findBySlug(slug).ifPresent(existingTenant -> {
+            if (currentTenantId == null || !existingTenant.getId().equals(currentTenantId)) {
+                throw new ValidationException("Tenant slug already exists: " + slug);
+            }
+        });
+    }
+
+    private String slugify(String value) {
+        String slug = value == null ? "" : value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-");
+        slug = slug.replaceAll("(^-+|-+$)", "");
+        return slug.isBlank() ? "tenant" : slug;
     }
 }

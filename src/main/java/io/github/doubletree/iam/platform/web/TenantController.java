@@ -3,15 +3,14 @@ package io.github.doubletree.iam.platform.web;
 import io.github.doubletree.iam.platform.application.service.TenantApplicationService;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.web.dto.CreateTenantRequest;
+import io.github.doubletree.iam.platform.web.dto.PageResponse;
 import io.github.doubletree.iam.platform.web.dto.TenantResponse;
 import io.github.doubletree.iam.platform.web.dto.UpdateTenantRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,12 +44,10 @@ public class TenantController {
 
     @GetMapping
     @Operation(summary = "List tenants", description = "Requires iam.read scope.")
-    public List<TenantResponse> listTenants(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return tenantApplicationService.listTenants(PageRequest.of(page, size)).stream()
-                .map(TenantResponse::from)
-                .toList();
+    public PageResponse<TenantResponse> listTenants(
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_PAGE) int page,
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_SIZE) int size) {
+        return PageResponse.from(tenantApplicationService.listTenants(SafePageRequest.of(page, size)), TenantResponse::from);
     }
 
     @GetMapping("/{tenantId}")
@@ -63,7 +60,7 @@ public class TenantController {
     @Operation(summary = "Update tenant", description = "Requires iam.write scope.")
     public TenantResponse updateTenant(
             @PathVariable UUID tenantId,
-            @RequestBody UpdateTenantRequest request) {
+            @Valid @RequestBody UpdateTenantRequest request) {
         return TenantResponse.from(tenantApplicationService.updateTenant(
                 tenantId,
                 request.name(),

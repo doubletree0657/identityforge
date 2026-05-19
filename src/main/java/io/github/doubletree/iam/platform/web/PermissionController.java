@@ -3,14 +3,13 @@ package io.github.doubletree.iam.platform.web;
 import io.github.doubletree.iam.platform.application.service.PermissionApplicationService;
 import io.github.doubletree.iam.platform.domain.Permission;
 import io.github.doubletree.iam.platform.web.dto.CreatePermissionRequest;
+import io.github.doubletree.iam.platform.web.dto.PageResponse;
 import io.github.doubletree.iam.platform.web.dto.PermissionResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -43,13 +42,11 @@ public class PermissionController {
 
     @GetMapping
     @Operation(summary = "List permissions", description = "Requires iam.read scope.")
-    public List<PermissionResponse> listPermissions(
+    public PageResponse<PermissionResponse> listPermissions(
             @RequestParam(required = false) UUID tenantId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return permissionApplicationService.listPermissions(tenantId, PageRequest.of(page, size)).stream()
-                .map(PermissionResponse::from)
-                .toList();
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_PAGE) int page,
+            @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_SIZE) int size) {
+        return PageResponse.from(permissionApplicationService.listPermissions(tenantId, SafePageRequest.of(page, size)), PermissionResponse::from);
     }
 
     @GetMapping("/{permissionId}")
