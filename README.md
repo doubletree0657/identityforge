@@ -38,8 +38,9 @@ service-layer orchestration, REST controllers, DTO validation, centralized error
 handling, OpenAPI output, JWT/JWK support, scope-protected APIs, audit logging,
 TOTP enrollment and verification, encrypted MFA secret storage, SCIM-style user
 and group APIs, OAuth2 client management APIs with secret rotation, repository-
-backed Spring Authorization Server client lookup, a Dockerfile, local
-PostgreSQL/Redis Compose services, and a GitLab CI pipeline.
+backed Spring Authorization Server client lookup, an end-to-end tested OAuth2
+authorization-code login flow, a Dockerfile, local PostgreSQL/Redis Compose
+services, and a GitLab CI pipeline.
 
 The project has performed a pre-release Flyway schema reset toward a stronger
 identity model. The current baseline includes tenant status, richer user
@@ -134,6 +135,34 @@ under `/scim/v2/**` require OAuth2 JWT scopes:
 
 - Read operations require `iam.read`.
 - Write operations require `iam.write`.
+
+## OAuth2 Authorization Code Demo
+
+The backend now supports a development authorization-code flow using persisted
+OAuth2 clients and local username/password login.
+
+At a high level:
+
+1. Create a tenant, local user, and confidential OAuth2 client through the
+   existing service/API paths. The client should use `authorization_code`,
+   `client_secret_basic`, a development redirect URI such as
+   `http://127.0.0.1:8080/oauth2/demo/callback`, and the `iam.read` scope.
+2. Set the user's initial password through the password management service.
+3. Start a browser authorization request:
+
+```text
+/oauth2/authorize?response_type=code&client_id=<client-id>&redirect_uri=<redirect-uri>&scope=iam.read&state=<state>
+```
+
+4. The browser is redirected to `/login`; after local form login, the
+   authorization server redirects back to the client redirect URI with a code.
+5. Exchange the code at `/oauth2/token` with the confidential client's
+   authentication and use the returned bearer token on `/api/**` requests that
+   require `iam.read`.
+
+The executable integration test
+`OAuth2AuthorizationCodeLoginFlowTests` seeds this setup and proves the full
+flow end to end.
 
 ## Roadmap
 

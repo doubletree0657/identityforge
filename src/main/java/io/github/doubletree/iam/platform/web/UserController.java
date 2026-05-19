@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -36,6 +37,13 @@ public class UserController {
     @Operation(summary = "Create user", description = "Requires iam.write scope.")
     public UserResponse createUser(@Valid @RequestBody CreateUserRequest request) {
         User user = userApplicationService.createUser(request.tenantId(), request.username(), request.displayName());
+        return UserResponse.from(user);
+    }
+
+    @GetMapping("/{userId}")
+    @Operation(summary = "Get user", description = "Requires iam.read scope.")
+    public UserResponse getUser(@PathVariable UUID userId) {
+        User user = userApplicationService.findUser(userId);
         return UserResponse.from(user);
     }
 

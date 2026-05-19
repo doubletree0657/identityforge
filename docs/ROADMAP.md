@@ -28,6 +28,9 @@ The codebase currently includes:
   client secret rotation.
 - Repository-backed Spring Authorization Server `RegisteredClientRepository`
   integration for persisted OAuth2 client registrations.
+- End-to-end OAuth2 authorization-code login flow using local users,
+  persisted confidential clients, JWT token issuance, and scope-protected API
+  access.
 - Spring Security default form login for early browser-based authorization
   integration.
 - TOTP enrollment and verification, including encrypted MFA secret storage.
@@ -88,14 +91,19 @@ Goal: provide a demonstrable OAuth2 authorization code flow that connects local
 users, registered clients, authorization requests, login, redirects, and token
 issuance.
 
+Completed in the current slice:
+
+- Persistent confidential client authorization-code scenario.
+- Browser-style redirect to login and resumed authorization request.
+- Authorization code exchange for a self-contained JWT access token.
+- Protected `/api/**` access with `iam.read` and rejection without the required
+  scope.
+
 Candidate slices:
 
-- Persistent registered clients for authorization code scenarios.
-- Redirect URI and grant type validation.
 - PKCE support for public clients.
-- Browser-based authorization request walkthrough.
-- Token issuance verification and API access using issued tokens.
-- Integration tests that prove the full flow.
+- Productized consent and login pages.
+- Broader manual seed/bootstrap workflow for local demos.
 
 ## Productized Authentication
 

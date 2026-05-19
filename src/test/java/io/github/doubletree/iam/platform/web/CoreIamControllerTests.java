@@ -135,6 +135,21 @@ class CoreIamControllerTests {
     }
 
     @Test
+    void readsUserWithReadScope() throws Exception {
+        when(userApplicationService.findUser(eq(USER_ID)))
+                .thenReturn(user("read-user", "Read User"));
+
+        mockMvc.perform(get("/api/users/{userId}", USER_ID)
+                        .with(readScopeJwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.username").value("read-user"))
+                .andExpect(jsonPath("$.displayName").value("Read User"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+    }
+
+    @Test
     void createsRoleUnderTenant() throws Exception {
         when(roleApplicationService.createRole(eq(TENANT_ID), eq("admin")))
                 .thenReturn(role("admin"));
