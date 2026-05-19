@@ -13,11 +13,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.doubletree.iam.platform.domain.AccountStatus;
+import io.github.doubletree.iam.platform.domain.Client;
 import io.github.doubletree.iam.platform.domain.PasswordCredential;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
+import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
+import java.util.Set;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -58,12 +62,33 @@ class HttpLoginFlowTests {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private ClientRepository clientRepository;
+
     @DynamicPropertySource
     static void registerDataSourceProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.datasource.driver-class-name", postgres::getDriverClassName);
+    }
+
+    @BeforeEach
+    void seedDevelopmentClient() {
+        if (!clientRepository.findAllByClientId("international-iam-dev").isEmpty()) {
+            return;
+        }
+
+        Tenant tenant = tenantRepository.save(Tenant.create("HTTP Login Flow Client Tenant"));
+        Client client = Client.create(tenant, "international-iam-dev", "International IAM Dev");
+        client.setClientSecretHash(passwordEncoder.encode("secret"));
+        client.setRequirePkce(false);
+        client.setRequireConsent(false);
+        client.setRedirectUris(Set.of("http://127.0.0.1:8080/login/oauth2/code/international-iam-dev"));
+        client.setGrantTypes(Set.of("client_credentials", "authorization_code"));
+        client.setScopes(Set.of("iam.read", "iam.write"));
+        client.setAuthenticationMethods(Set.of("client_secret_basic"));
+        clientRepository.saveAndFlush(client);
     }
 
     @Test

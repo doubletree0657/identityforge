@@ -37,8 +37,9 @@ PostgreSQL schema migrations, a stronger IAM domain model, JPA repositories,
 service-layer orchestration, REST controllers, DTO validation, centralized error
 handling, OpenAPI output, JWT/JWK support, scope-protected APIs, audit logging,
 TOTP enrollment and verification, encrypted MFA secret storage, SCIM-style user
-and group APIs, OAuth2 client management APIs with secret rotation, a
-Dockerfile, local PostgreSQL/Redis Compose services, and a GitLab CI pipeline.
+and group APIs, OAuth2 client management APIs with secret rotation, repository-
+backed Spring Authorization Server client lookup, a Dockerfile, local
+PostgreSQL/Redis Compose services, and a GitLab CI pipeline.
 
 The project has performed a pre-release Flyway schema reset toward a stronger
 identity model. The current baseline includes tenant status, richer user

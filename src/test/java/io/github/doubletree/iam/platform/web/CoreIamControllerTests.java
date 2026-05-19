@@ -40,6 +40,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -83,6 +84,9 @@ class CoreIamControllerTests {
 
     @MockitoBean
     private GroupApplicationService groupApplicationService;
+
+    @MockitoBean
+    private RegisteredClientRepository registeredClientRepository;
 
     private final RequestPostProcessor writeScopeJwt = jwt()
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.write"));

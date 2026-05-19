@@ -26,6 +26,8 @@ The codebase currently includes:
   APIs using `iam.read` and `iam.write`.
 - OAuth2 client management APIs for safe creation, update, and confidential
   client secret rotation.
+- Repository-backed Spring Authorization Server `RegisteredClientRepository`
+  integration for persisted OAuth2 client registrations.
 - Spring Security default form login for early browser-based authorization
   integration.
 - TOTP enrollment and verification, including encrypted MFA secret storage.
@@ -115,13 +117,10 @@ Candidate slices:
 Goal: make OAuth2 client registration and management a first-class product area
 rather than local development configuration.
 
-Candidate slices:
-
-- Repository-backed Spring Authorization Server integration.
-
 Completed slices:
 
 - Persistent client registration model.
+- Repository-backed Spring Authorization Server integration.
 - Client secret hashing, rotation, and display rules.
 - Redirect URI, scope, grant type, and authentication method management.
 - Public versus confidential client behavior.
