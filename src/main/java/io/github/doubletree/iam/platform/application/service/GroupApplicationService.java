@@ -9,6 +9,8 @@ import io.github.doubletree.iam.platform.repository.GroupRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,9 +44,35 @@ public class GroupApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public Page<Group> listGroups(UUID tenantId, Pageable pageable) {
+        if (tenantId == null) {
+            return groupRepository.findAll(pageable);
+        }
+        return groupRepository.findByTenantId(tenantId, pageable);
+    }
+
+    @Transactional(readOnly = true)
     public Group findGroup(UUID groupId) {
         return groupRepository.findById(groupId)
                 .orElseThrow(() -> new EntityNotFoundException("Group not found: " + groupId));
+    }
+
+    @Transactional
+    public Group updateGroup(UUID groupId, String name, String displayName, String description) {
+        Group group = findGroup(groupId);
+        if (name != null) {
+            group.setName(name);
+        }
+        if (displayName != null) {
+            group.setDisplayName(displayName);
+        }
+        if (description != null) {
+            group.setDescription(description);
+        }
+        Group savedGroup = groupRepository.save(group);
+        auditApplicationService.recordEvent(
+                savedGroup.getTenant().getId(), "GROUP_UPDATED", "GROUP", savedGroup.getId());
+        return savedGroup;
     }
 
     @Transactional

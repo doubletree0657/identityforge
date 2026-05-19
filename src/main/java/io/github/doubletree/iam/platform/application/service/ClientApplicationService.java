@@ -14,6 +14,8 @@ import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,6 +80,19 @@ public class ClientApplicationService {
         Client client = clientRepository.save(candidate);
         auditApplicationService.recordEvent(tenant.getId(), "CLIENT_CREATED", "CLIENT", client.getId());
         return new ClientSecretResult(client, rawSecret);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Client> listClients(UUID tenantId, Pageable pageable) {
+        if (tenantId == null) {
+            return clientRepository.findAll(pageable);
+        }
+        return clientRepository.findByTenantId(tenantId, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Client findClient(UUID clientId) {
+        return loadClient(clientId);
     }
 
     @Transactional

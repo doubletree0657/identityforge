@@ -8,11 +8,20 @@ import io.github.doubletree.iam.platform.domain.PasswordCredential;
 import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
+import io.github.doubletree.iam.platform.domain.UserAttribute;
+import io.github.doubletree.iam.platform.domain.UserAttributeValueType;
+import io.github.doubletree.iam.platform.domain.UserProfile;
 import io.github.doubletree.iam.platform.repository.RoleRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
+import io.github.doubletree.iam.platform.repository.UserAttributeRepository;
+import io.github.doubletree.iam.platform.repository.UserProfileRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
 import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +34,8 @@ public class UserApplicationService {
     private final UserRepository userRepository;
     private final TenantRepository tenantRepository;
     private final RoleRepository roleRepository;
+    private final UserProfileRepository userProfileRepository;
+    private final UserAttributeRepository userAttributeRepository;
     private final AuditApplicationService auditApplicationService;
     private final PasswordEncoder passwordEncoder;
 
@@ -32,11 +43,15 @@ public class UserApplicationService {
             UserRepository userRepository,
             TenantRepository tenantRepository,
             RoleRepository roleRepository,
+            UserProfileRepository userProfileRepository,
+            UserAttributeRepository userAttributeRepository,
             AuditApplicationService auditApplicationService,
             PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.tenantRepository = tenantRepository;
         this.roleRepository = roleRepository;
+        this.userProfileRepository = userProfileRepository;
+        this.userAttributeRepository = userAttributeRepository;
         this.auditApplicationService = auditApplicationService;
         this.passwordEncoder = passwordEncoder;
     }
@@ -52,9 +67,50 @@ public class UserApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public Page<User> listUsers(UUID tenantId, Pageable pageable) {
+        if (tenantId == null) {
+            return userRepository.findAll(pageable);
+        }
+        return userRepository.findByTenantId(tenantId, pageable);
+    }
+
+    @Transactional(readOnly = true)
     public User findUser(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+    }
+
+    @Transactional
+    public User updateUser(
+            UUID userId,
+            String displayName,
+            String email,
+            Boolean emailVerified,
+            String phoneNumber,
+            Boolean phoneNumberVerified,
+            AccountStatus accountStatus) {
+        User user = loadUser(userId);
+        if (displayName != null) {
+            user.setDisplayName(displayName);
+        }
+        if (email != null) {
+            user.setEmail(email);
+        }
+        if (emailVerified != null) {
+            user.setEmailVerified(emailVerified);
+        }
+        if (phoneNumber != null) {
+            user.setPhoneNumber(phoneNumber);
+        }
+        if (phoneNumberVerified != null) {
+            user.setPhoneNumberVerified(phoneNumberVerified);
+        }
+        if (accountStatus != null) {
+            user.setAccountStatus(accountStatus);
+        }
+        User savedUser = userRepository.save(user);
+        auditApplicationService.recordEvent(savedUser.getTenant().getId(), "USER_UPDATED", "USER", savedUser.getId());
+        return savedUser;
     }
 
     @Transactional
@@ -73,6 +129,90 @@ public class UserApplicationService {
         auditApplicationService.recordEvent(
                 savedUser.getTenant().getId(), "ROLE_ASSIGNED_TO_USER", "USER", savedUser.getId());
         return savedUser;
+    }
+
+    @Transactional
+    public User removeRoleFromUser(UUID userId, UUID roleId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+        Role role = roleRepository.findById(roleId)
+                .orElseThrow(() -> new EntityNotFoundException("Role not found: " + roleId));
+
+        if (!user.getTenant().getId().equals(role.getTenant().getId())) {
+            throw new TenantBoundaryViolationException("User and role must belong to the same tenant");
+        }
+
+        boolean removed = user.getRoles().remove(role);
+        User savedUser = userRepository.save(user);
+        if (removed) {
+            auditApplicationService.recordEvent(
+                    savedUser.getTenant().getId(), "ROLE_REMOVED_FROM_USER", "USER", savedUser.getId());
+        }
+        return savedUser;
+    }
+
+    @Transactional(readOnly = true)
+    public UserProfile findProfileByUserId(UUID userId) {
+        ensureUserExists(userId);
+        return userProfileRepository.findByUserId(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User profile not found for user: " + userId));
+    }
+
+    @Transactional
+    public UserProfile updateProfile(
+            UUID userId,
+            String givenName,
+            String familyName,
+            String preferredName,
+            String locale,
+            String timezone,
+            String avatarUrl,
+            String jobTitle,
+            String department,
+            String organization,
+            String employeeNumber) {
+        User user = loadUser(userId);
+        UserProfile profile = userProfileRepository.findByUserId(userId)
+                .orElseGet(() -> UserProfile.create(user));
+        profile.setGivenName(givenName);
+        profile.setFamilyName(familyName);
+        profile.setPreferredName(preferredName);
+        profile.setLocale(locale);
+        profile.setTimezone(timezone);
+        profile.setAvatarUrl(avatarUrl);
+        profile.setJobTitle(jobTitle);
+        profile.setDepartment(department);
+        profile.setOrganization(organization);
+        profile.setEmployeeNumber(employeeNumber);
+        UserProfile savedProfile = userProfileRepository.save(profile);
+        auditApplicationService.recordEvent(user.getTenant().getId(), "USER_PROFILE_UPDATED", "USER", user.getId());
+        return savedProfile;
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserAttribute> listAttributes(UUID userId) {
+        ensureUserExists(userId);
+        return userAttributeRepository.findByUserIdOrderByNameAsc(userId);
+    }
+
+    @Transactional
+    public UserAttribute setAttribute(UUID userId, String name, String value, UserAttributeValueType valueType) {
+        User user = loadUser(userId);
+        validateAttribute(name, value, valueType);
+        UserAttribute attribute = userAttributeRepository.findByUserIdAndName(userId, name)
+                .orElseGet(() -> UserAttribute.create(user, name, value, valueType));
+        attribute.setValue(value);
+        attribute.setValueType(valueType);
+        UserAttribute savedAttribute = userAttributeRepository.save(attribute);
+        auditApplicationService.recordEvent(user.getTenant().getId(), "USER_ATTRIBUTE_SET", "USER", user.getId());
+        return savedAttribute;
+    }
+
+    @Transactional
+    public void deleteAttribute(UUID userId, String name) {
+        User user = loadUser(userId);
+        userAttributeRepository.deleteByUserIdAndName(userId, name);
+        auditApplicationService.recordEvent(user.getTenant().getId(), "USER_ATTRIBUTE_DELETED", "USER", user.getId());
     }
 
     @Transactional
@@ -123,6 +263,12 @@ public class UserApplicationService {
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
     }
 
+    private void ensureUserExists(UUID userId) {
+        if (!userRepository.existsById(userId)) {
+            throw new EntityNotFoundException("User not found: " + userId);
+        }
+    }
+
     private void applyPasswordChange(User user, String rawPassword) {
         validatePassword(rawPassword);
         PasswordCredential credential = user.ensurePasswordCredential();
@@ -141,6 +287,25 @@ public class UserApplicationService {
         if (rawPassword.length() < MIN_PASSWORD_LENGTH) {
             throw new PasswordValidationException(
                     "Password must be at least " + MIN_PASSWORD_LENGTH + " characters");
+        }
+    }
+
+    private void validateAttribute(String name, String value, UserAttributeValueType valueType) {
+        if (name == null || name.isBlank()) {
+            throw new PasswordValidationException("Attribute name must be provided");
+        }
+        if (value == null) {
+            throw new PasswordValidationException("Attribute value must be provided");
+        }
+        if (valueType == null) {
+            throw new PasswordValidationException("Attribute value type must be provided");
+        }
+        String normalizedName = name.toLowerCase(Locale.ROOT);
+        if (normalizedName.contains("password")
+                || normalizedName.contains("secret")
+                || normalizedName.contains("token")
+                || normalizedName.contains("credential")) {
+            throw new PasswordValidationException("Secret-like values must not be stored as user attributes");
         }
     }
 }

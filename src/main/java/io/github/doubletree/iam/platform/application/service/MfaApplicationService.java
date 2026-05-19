@@ -64,8 +64,10 @@ public class MfaApplicationService {
 
     @Transactional
     public boolean verifyTotp(UUID userId, String code) {
+        User requestedUser = findUser(userId);
         TotpCredential credential = totpCredentialRepository.findByUserId(userId).orElse(null);
         if (credential == null || !credential.isEnabled() || credential.getSecretCiphertext() == null) {
+            auditApplicationService.recordEvent(requestedUser.getTenant().getId(), "MFA_VERIFY_FAILED", "USER", userId);
             return false;
         }
 
@@ -76,6 +78,9 @@ public class MfaApplicationService {
             totpCredentialRepository.save(credential);
             User user = credential.getUser();
             auditApplicationService.recordEvent(user.getTenant().getId(), "MFA_VERIFIED", "USER", user.getId());
+        }
+        if (!valid) {
+            auditApplicationService.recordEvent(credential.getUser().getTenant().getId(), "MFA_VERIFY_FAILED", "USER", userId);
         }
         return valid;
     }

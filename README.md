@@ -42,6 +42,12 @@ backed Spring Authorization Server client lookup, an end-to-end tested OAuth2
 authorization-code login flow, a Dockerfile, local PostgreSQL/Redis Compose
 services, and a GitLab CI pipeline.
 
+The backend Admin API surface is being completed for a future React Admin
+Console. Current management APIs cover tenants, users, profiles, custom user
+attributes, groups, roles, permissions, OAuth2 clients, MFA enrollment
+operations, and audit log queries with safe response DTOs that avoid exposing
+password hashes, TOTP secret material, and client secret hashes.
+
 The project has performed a pre-release Flyway schema reset toward a stronger
 identity model. The current baseline includes tenant status, richer user
 identity fields, separate user profiles, separate password and TOTP

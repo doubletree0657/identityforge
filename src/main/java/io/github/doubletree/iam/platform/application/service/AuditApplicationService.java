@@ -5,6 +5,9 @@ import io.github.doubletree.iam.platform.domain.AuditLog;
 import io.github.doubletree.iam.platform.domain.AuditResult;
 import io.github.doubletree.iam.platform.repository.AuditLogRepository;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -27,5 +30,28 @@ public class AuditApplicationService {
                 resourceType,
                 resourceId,
                 AuditResult.SUCCESS));
+    }
+
+    public Page<AuditLog> listAuditLogs(
+            UUID tenantId,
+            String action,
+            String resourceType,
+            UUID resourceId,
+            Pageable pageable) {
+        Specification<AuditLog> specification = Specification.where(equalUuid("tenantId", tenantId))
+                .and(equalString("action", action))
+                .and(equalString("resourceType", resourceType))
+                .and(equalUuid("resourceId", resourceId));
+        return auditLogRepository.findAll(specification, pageable);
+    }
+
+    private Specification<AuditLog> equalUuid(String fieldName, UUID value) {
+        return value == null ? null : (root, query, builder) -> builder.equal(root.get(fieldName), value);
+    }
+
+    private Specification<AuditLog> equalString(String fieldName, String value) {
+        return value == null || value.isBlank()
+                ? null
+                : (root, query, builder) -> builder.equal(root.get(fieldName), value);
     }
 }

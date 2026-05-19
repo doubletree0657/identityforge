@@ -26,6 +26,9 @@ The codebase currently includes:
   APIs using `iam.read` and `iam.write`.
 - OAuth2 client management APIs for safe creation, update, and confidential
   client secret rotation.
+- Backend Admin APIs for a future React Admin Console, covering tenants, users,
+  profiles, custom attributes, groups, roles, permissions, OAuth2 clients, TOTP
+  operations, and audit log queries.
 - Repository-backed Spring Authorization Server `RegisteredClientRepository`
   integration for persisted OAuth2 client registrations.
 - End-to-end OAuth2 authorization-code login flow using local users,
@@ -133,6 +136,35 @@ Completed slices:
 - Redirect URI, scope, grant type, and authentication method management.
 - Public versus confidential client behavior.
 - Administrative APIs with validation and audit events.
+- Safe list and detail APIs for frontend administration without exposing raw
+  secrets or client secret hashes.
+
+## Backend Admin API Surface
+
+Status: active track.
+
+Goal: provide a coherent backend API layer that can support a future React Admin
+Console without exposing credential internals.
+
+Completed slices:
+
+- Tenant list, detail, create, and update APIs.
+- User list, detail, create, update, role assignment, role removal, and password
+  update APIs.
+- User profile and custom user attribute APIs.
+- Group list, detail, create, update, member add, member remove, and member
+  listing APIs.
+- Role and permission list/detail/create/update and assignment APIs.
+- OAuth2 client list/detail APIs using safe DTOs.
+- TOTP enrollment, verification, and disable endpoints.
+- Audit log query API with simple filters and pagination.
+
+Candidate slices:
+
+- Admin Console frontend.
+- Richer pagination metadata and search filters.
+- More complete lifecycle workflows for account state, group ownership, and
+  delegated administration.
 
 ## MFA and Strong Authentication
 

@@ -6,6 +6,8 @@ import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.repository.PermissionRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,5 +35,19 @@ public class PermissionApplicationService {
         Permission permission = permissionRepository.save(Permission.create(tenant, name));
         auditApplicationService.recordEvent(tenant.getId(), "PERMISSION_CREATED", "PERMISSION", permission.getId());
         return permission;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Permission> listPermissions(UUID tenantId, Pageable pageable) {
+        if (tenantId == null) {
+            return permissionRepository.findAll(pageable);
+        }
+        return permissionRepository.findByTenantId(tenantId, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Permission findPermission(UUID permissionId) {
+        return permissionRepository.findById(permissionId)
+                .orElseThrow(() -> new EntityNotFoundException("Permission not found: " + permissionId));
     }
 }
