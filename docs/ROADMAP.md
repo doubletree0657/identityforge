@@ -47,8 +47,9 @@ The codebase currently includes:
   test, package, and Docker image build.
 - React TypeScript Admin Console under `frontend/` with real Admin API
   integration, development bearer-token configuration, resource management
-  screens, MFA operations, audit log queries, and an OAuth2 authorization-code
-  demo helper.
+  screens, global tenant context, relationship-aware user-role, group-member,
+  role-permission, OAuth2 client, MFA, audit log workflows, an IAM workflow demo
+  page, and an OAuth2 authorization-code demo helper.
 
 Current login support is an integration step, not a product-grade authentication
 experience. It should be expanded into a designed authentication flow before the
@@ -196,6 +197,19 @@ Completed slices:
 - Dashboard overview backed by paginated Admin APIs.
 - Tenant, user, user detail, profile, attribute, group, role, permission,
   OAuth2 client, MFA, and audit log management screens.
+- Global tenant selector stored in local storage and used as the default context
+  for tenant-scoped users, groups, roles, permissions, OAuth2 clients, MFA
+  actions, and audit logs.
+- Relationship-aware IAM workflows: user role assignment, user group membership
+  visibility, group member add/remove with tenant user selectors, role
+  permission assignment/removal with tenant permission selectors, and related
+  user audit events.
+- OAuth2 client workflow guidance for confidential versus public clients,
+  authorization code versus client credentials grants, redirect URIs, scopes,
+  PKCE, one-time secret display, and confidential-client secret rotation.
+- Guided IAM Workflow page that links the local demo chain from tenant
+  selection through user, password, permission, role, group, OAuth2 client, and
+  audit log review.
 - OAuth2 authorization-code demo helper with generated authorization URL and
   token exchange guidance.
 - Local development token workflow backed by dev-only OAuth2 client bootstrap.

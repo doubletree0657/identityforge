@@ -52,7 +52,10 @@ log queries with paginated list responses, practical validation, safer default
 profile handling, consistent validation errors, and safe response DTOs that
 avoid exposing password hashes, TOTP secret material, and client secret hashes.
 The Admin Console demonstrates those APIs through real backend calls and a
-development bearer-token panel.
+development bearer-token panel. It now has a global tenant selector that is
+used by tenant-scoped screens for users, groups, roles, permissions, OAuth2
+clients, MFA operations, and audit logs, so normal demo workflows no longer
+require copying tenant UUIDs between pages.
 
 The project has performed a pre-release Flyway schema reset toward a stronger
 identity model. The current baseline includes tenant status, richer user
@@ -145,6 +148,20 @@ is stored in local storage for local development only. Do not paste passwords,
 client secrets, refresh tokens, or other long-lived production credentials.
 The dev bootstrap data is only created by the `dev` profile and must not be
 used as production initialization.
+
+The Admin Console is organized around relationship-aware IAM workflows:
+
+- Select a current tenant once in the console header.
+- Create users, groups, roles, permissions, and OAuth2 clients in that tenant.
+- Assign roles to users and permissions to roles using tenant-scoped selectors.
+- Add users to groups using a tenant user selector.
+- Manage user identity, profile, custom attributes, password, TOTP actions, and
+  related audit events from the user detail page.
+- Use the OAuth2 client workflow defaults for confidential versus public
+  clients, authorization code versus client credentials grants, redirect URIs,
+  scopes, and PKCE.
+- Open the `IAM Workflow` page for a guided demo chain from tenant selection
+  through audit log review.
 
 Build the frontend:
 

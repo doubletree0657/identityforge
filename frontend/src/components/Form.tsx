@@ -19,28 +19,31 @@ export function Field({
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
+  const { className = '', ...inputProps } = props;
   return (
     <input
-      className="min-h-10 rounded-md border border-line bg-white px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-      {...props}
+      className={`min-h-10 rounded-md border border-line bg-white px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 ${className}`}
+      {...inputProps}
     />
   );
 }
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const { className = '', ...textareaProps } = props;
   return (
     <textarea
-      className="min-h-24 rounded-md border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-      {...props}
+      className={`min-h-24 rounded-md border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 ${className}`}
+      {...textareaProps}
     />
   );
 }
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
+  const { className = '', ...selectProps } = props;
   return (
     <select
-      className="min-h-10 rounded-md border border-line bg-white px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-      {...props}
+      className={`min-h-10 rounded-md border border-line bg-white px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 ${className}`}
+      {...selectProps}
     />
   );
 }

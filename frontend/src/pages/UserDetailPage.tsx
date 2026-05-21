@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Save, Trash2 } from 'lucide-react';
 import { adminApi } from '../api/adminApi';
 import { Badge } from '../components/Badge';
@@ -11,7 +11,7 @@ import { SecretNotice } from '../components/SecretNotice';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { AccountStatus, UserAttributeValueType } from '../types/api';
-import { compact } from '../utils/format';
+import { compact, formatDate } from '../utils/format';
 import { PageHeader } from './PageHeader';
 
 export function UserDetailPage() {
@@ -22,7 +22,21 @@ export function UserDetailPage() {
   const user = useQuery({ queryKey: ['user', userId], queryFn: () => adminApi.users.get(userId), enabled: !!userId });
   const profile = useQuery({ queryKey: ['user-profile', userId], queryFn: () => adminApi.users.profile(userId), enabled: !!userId });
   const attributes = useQuery({ queryKey: ['user-attributes', userId], queryFn: () => adminApi.users.attributes(userId), enabled: !!userId });
-  const roles = useQuery({ queryKey: ['roles-for-user-detail'], queryFn: () => adminApi.roles.list({ size: 100 }) });
+  const roles = useQuery({
+    queryKey: ['roles-for-user-detail', user.data?.tenantId],
+    queryFn: () => adminApi.roles.list({ tenantId: user.data!.tenantId, size: 100 }),
+    enabled: !!user.data?.tenantId,
+  });
+  const groups = useQuery({
+    queryKey: ['groups-for-user-detail', user.data?.tenantId],
+    queryFn: () => adminApi.groups.list({ tenantId: user.data!.tenantId, size: 100 }),
+    enabled: !!user.data?.tenantId,
+  });
+  const auditLogs = useQuery({
+    queryKey: ['audit-logs-for-user-detail', userId, user.data?.tenantId],
+    queryFn: () => adminApi.auditLogs.list({ tenantId: user.data!.tenantId, resourceType: 'USER', resourceId: userId, size: 10 }),
+    enabled: !!userId && !!user.data?.tenantId,
+  });
 
   const updateUser = useMutation({
     mutationFn: (body: { displayName?: string; email?: string; phoneNumber?: string; accountStatus?: AccountStatus }) =>
@@ -117,6 +131,10 @@ export function UserDetailPage() {
     return null;
   }
 
+  const assignedRoles = roles.data?.items.filter((role) => user.data.roleIds.includes(role.id)) ?? [];
+  const availableRoles = roles.data?.items.filter((role) => !user.data.roleIds.includes(role.id)) ?? [];
+  const memberships = groups.data?.items.filter((group) => group.memberIds.includes(user.data.id)) ?? [];
+
   return (
     <>
       <PageHeader title={user.data.displayName} description={`User ${user.data.username} in tenant ${user.data.tenantId}`} />
@@ -166,8 +184,13 @@ export function UserDetailPage() {
         </Card>
         <Card title="Roles">
           <div className="mb-3 flex flex-wrap gap-2">
-            {user.data.roleIds.length === 0 && <span className="text-sm text-slate-500">No roles assigned.</span>}
-            {user.data.roleIds.map((roleId) => (
+            {assignedRoles.length === 0 && user.data.roleIds.length === 0 && <span className="text-sm text-slate-500">No roles assigned.</span>}
+            {assignedRoles.map((role) => (
+              <button key={role.id} onClick={() => removeRole.mutate(role.id)} className="rounded-full border border-line bg-slate-50 px-2 py-1 text-xs text-slate-700">
+                {role.name} ×
+              </button>
+            ))}
+            {user.data.roleIds.filter((roleId) => !assignedRoles.some((role) => role.id === roleId)).map((roleId) => (
               <button key={roleId} onClick={() => removeRole.mutate(roleId)} className="rounded-full border border-line bg-slate-50 px-2 py-1 text-xs text-slate-700">
                 {roleId} ×
               </button>
@@ -182,11 +205,25 @@ export function UserDetailPage() {
           >
             <Select name="roleId" className="flex-1">
               <option value="">Select role</option>
-              {roles.data?.items.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+              {availableRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
             </Select>
             <Button type="submit">Assign</Button>
           </form>
           {(assignRole.isError || removeRole.isError) && <div className="mt-3"><ErrorState error={assignRole.error ?? removeRole.error} /></div>}
+        </Card>
+        <Card title="Group memberships">
+          {groups.isLoading && <LoadingState label="Loading groups" />}
+          {groups.isError && <ErrorState error={groups.error} />}
+          {!groups.isLoading && memberships.length === 0 && <p className="text-sm text-slate-500">This user is not a member of any groups in this tenant.</p>}
+          {memberships.length > 0 && (
+            <DataTable
+              items={memberships}
+              columns={[
+                { header: 'Group', render: (group) => <span className="font-medium">{group.displayName || group.name}</span> },
+                { header: 'Description', render: (group) => group.description || '-' },
+              ]}
+            />
+          )}
         </Card>
         <Card title="Attributes">
           <form onSubmit={onAttribute} className="mb-4 grid gap-2 md:grid-cols-[1fr_1fr_140px_auto]">
@@ -234,6 +271,23 @@ export function UserDetailPage() {
               <ErrorState error={enrollTotp.error ?? verifyTotp.error ?? disableTotp.error} />
             )}
           </div>
+        </Card>
+        <Card
+          title="Related audit events"
+          action={<Link className="text-sm font-medium text-brand hover:underline" to={`/audit-logs?resourceType=USER&resourceId=${user.data.id}`}>Open audit logs</Link>}
+        >
+          {auditLogs.isLoading && <LoadingState label="Loading audit events" />}
+          {auditLogs.isError && <ErrorState error={auditLogs.error} />}
+          {auditLogs.data && (
+            <DataTable
+              items={auditLogs.data.items}
+              columns={[
+                { header: 'When', render: (log) => formatDate(log.createdAt) },
+                { header: 'Action', render: (log) => <span className="font-medium">{log.action}</span> },
+                { header: 'Result', render: (log) => <Badge>{log.result}</Badge> },
+              ]}
+            />
+          )}
         </Card>
       </div>
     </>

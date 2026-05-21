@@ -6,11 +6,14 @@ import {
   ListChecks,
   LockKeyhole,
   Network,
+  Route,
   ShieldCheck,
   UserCog,
   Users,
 } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { Select } from '../components/Form';
+import { useTenantContext } from '../context/TenantContext';
 import { TokenPanel } from './TokenPanel';
 
 const navItems = [
@@ -23,10 +26,13 @@ const navItems = [
   { to: '/clients', label: 'OAuth2 Clients', icon: KeyRound },
   { to: '/mfa', label: 'MFA', icon: LockKeyhole },
   { to: '/audit-logs', label: 'Audit Logs', icon: Activity },
+  { to: '/iam-workflow', label: 'IAM Workflow', icon: Route },
   { to: '/oauth2-demo', label: 'OAuth2 Demo', icon: Network },
 ];
 
 export function AdminLayout() {
+  const { tenants, selectedTenantId, selectedTenant, setSelectedTenantId, isLoading } = useTenantContext();
+
   return (
     <div className="min-h-screen bg-[#f5f7fb]">
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-line bg-white lg:block">
@@ -60,9 +66,29 @@ export function AdminLayout() {
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <div className="text-sm font-semibold text-ink">Admin Console v1</div>
-              <div className="text-xs text-slate-500">Development console for scope-protected Admin APIs</div>
+              <div className="text-xs text-slate-500">
+                {selectedTenant ? `Tenant context: ${selectedTenant.name} (${selectedTenant.slug})` : 'Select a tenant to enable guided workflows'}
+              </div>
             </div>
-            <TokenPanel />
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Current tenant
+                <Select
+                  value={selectedTenantId}
+                  onChange={(event) => setSelectedTenantId(event.target.value)}
+                  disabled={isLoading}
+                  className="min-w-[260px]"
+                >
+                  <option value="">{isLoading ? 'Loading tenants...' : 'No tenant selected'}</option>
+                  {tenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.name} ({tenant.slug})
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <TokenPanel />
+            </div>
           </div>
         </header>
         <main className="mx-auto max-w-7xl px-4 py-6 lg:px-6">

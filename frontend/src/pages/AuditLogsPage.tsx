@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { adminApi } from '../api/adminApi';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
@@ -7,23 +8,35 @@ import { Field, Input } from '../components/Form';
 import { Pagination } from '../components/Pagination';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
+import { useTenantContext } from '../context/TenantContext';
 import { formatDate } from '../utils/format';
 import { PageHeader } from './PageHeader';
 
 export function AuditLogsPage() {
   const [page, setPage] = useState(0);
-  const [filters, setFilters] = useState({ tenantId: '', action: '', resourceType: '', resourceId: '' });
+  const [searchParams] = useSearchParams();
+  const { selectedTenantId, selectedTenant } = useTenantContext();
+  const [filters, setFilters] = useState({
+    action: searchParams.get('action') ?? '',
+    resourceType: searchParams.get('resourceType') ?? '',
+    resourceId: searchParams.get('resourceId') ?? '',
+  });
   const auditLogs = useQuery({
-    queryKey: ['audit-logs', page, filters],
-    queryFn: () => adminApi.auditLogs.list({ page, size: 20, ...filters }),
+    queryKey: ['audit-logs', page, selectedTenantId, filters],
+    queryFn: () => adminApi.auditLogs.list({ page, size: 20, tenantId: selectedTenantId, ...filters }),
+    enabled: !!selectedTenantId,
   });
 
   return (
     <>
       <PageHeader title="Audit Logs" description="Query administrative and security events without exposing sensitive values." />
       <Card title="Filters">
+        {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant to load audit events for tenant-scoped exploration.</p>}
         <div className="grid gap-3 md:grid-cols-4">
-          {(['tenantId', 'action', 'resourceType', 'resourceId'] as const).map((field) => (
+          <Field label="tenant">
+            <Input value={selectedTenant?.name ?? 'No tenant selected'} disabled />
+          </Field>
+          {(['action', 'resourceType', 'resourceId'] as const).map((field) => (
             <Field key={field} label={field}>
               <Input
                 value={filters[field]}

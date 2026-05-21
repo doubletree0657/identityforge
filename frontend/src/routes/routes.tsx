@@ -4,6 +4,7 @@ import { AuditLogsPage } from '../pages/AuditLogsPage';
 import { ClientsPage } from '../pages/ClientsPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { GroupsPage } from '../pages/GroupsPage';
+import { IamWorkflowPage } from '../pages/IamWorkflowPage';
 import { MfaPage } from '../pages/MfaPage';
 import { OAuth2DemoPage } from '../pages/OAuth2DemoPage';
 import { PermissionsPage } from '../pages/PermissionsPage';
@@ -26,6 +27,7 @@ export const routes: RouteObject[] = [
       { path: '/clients', element: <ClientsPage /> },
       { path: '/mfa', element: <MfaPage /> },
       { path: '/audit-logs', element: <AuditLogsPage /> },
+      { path: '/iam-workflow', element: <IamWorkflowPage /> },
       { path: '/oauth2-demo', element: <OAuth2DemoPage /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],

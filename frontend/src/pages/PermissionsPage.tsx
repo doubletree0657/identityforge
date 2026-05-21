@@ -7,13 +7,18 @@ import { Field, Input } from '../components/Form';
 import { Pagination } from '../components/Pagination';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
+import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
 export function PermissionsPage() {
   const [page, setPage] = useState(0);
-  const [tenantId, setTenantId] = useState('');
+  const { selectedTenantId, selectedTenant } = useTenantContext();
   const queryClient = useQueryClient();
-  const permissions = useQuery({ queryKey: ['permissions', page, tenantId], queryFn: () => adminApi.permissions.list({ page, size: 20, tenantId }) });
+  const permissions = useQuery({
+    queryKey: ['permissions', page, selectedTenantId],
+    queryFn: () => adminApi.permissions.list({ page, size: 20, tenantId: selectedTenantId }),
+    enabled: !!selectedTenantId,
+  });
   const createPermission = useMutation({
     mutationFn: adminApi.permissions.create,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['permissions'] }),
@@ -22,7 +27,7 @@ export function PermissionsPage() {
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    createPermission.mutate({ tenantId: String(form.get('tenantId') ?? ''), name: String(form.get('name') ?? '') });
+    createPermission.mutate({ tenantId: selectedTenantId, name: String(form.get('name') ?? '') });
     event.currentTarget.reset();
   }
 
@@ -31,15 +36,16 @@ export function PermissionsPage() {
       <PageHeader title="Permissions" description="Create named capabilities that can be attached to roles." />
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
         <Card title="Create permission">
+          {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant in the header before creating permissions.</p>}
           <form onSubmit={create} className="grid gap-3">
-            <Field label="Tenant ID"><Input name="tenantId" required /></Field>
+            <Field label="Tenant"><Input value={selectedTenant?.name ?? 'No tenant selected'} disabled /></Field>
             <Field label="Name"><Input name="name" placeholder="users:read" required /></Field>
-            <Button type="submit">Create</Button>
+            <Button type="submit" disabled={!selectedTenantId}>Create</Button>
             {createPermission.isError && <ErrorState error={createPermission.error} />}
           </form>
         </Card>
         <Card title="Permissions">
-          <div className="mb-4"><Field label="Tenant filter"><Input value={tenantId} onChange={(event) => { setTenantId(event.target.value); setPage(0); }} /></Field></div>
+          {!selectedTenantId && <p className="text-sm text-slate-600">Select a tenant to load its permissions.</p>}
           {permissions.isLoading && <LoadingState />}
           {permissions.isError && <ErrorState error={permissions.error} />}
           {permissions.data && (
