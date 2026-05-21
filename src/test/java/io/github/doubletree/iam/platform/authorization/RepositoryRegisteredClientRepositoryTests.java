@@ -9,6 +9,7 @@ import io.github.doubletree.iam.platform.domain.ClientType;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
+import java.time.Duration;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +19,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
+import org.springframework.security.oauth2.server.authorization.settings.OAuth2TokenFormat;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -76,6 +78,18 @@ class RepositoryRegisteredClientRepositoryTests {
         assertThat(registeredClient.getScopes()).containsExactlyInAnyOrder("iam.read", "iam.write");
         assertThat(registeredClient.getClientSettings().isRequireProofKey()).isFalse();
         assertThat(registeredClient.getClientSettings().isRequireAuthorizationConsent()).isTrue();
+    }
+
+    @Test
+    void mappedRegisteredClientUsesThirtyMinuteSelfContainedAccessTokens() {
+        saveConfidentialClient();
+
+        RegisteredClient registeredClient = registeredClientRepository.findByClientId("registered-confidential");
+
+        assertThat(registeredClient.getTokenSettings().getAccessTokenFormat())
+                .isEqualTo(OAuth2TokenFormat.SELF_CONTAINED);
+        assertThat(registeredClient.getTokenSettings().getAccessTokenTimeToLive())
+                .isEqualTo(Duration.ofMinutes(30));
     }
 
     @Test

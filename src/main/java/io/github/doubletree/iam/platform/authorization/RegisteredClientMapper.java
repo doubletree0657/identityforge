@@ -1,6 +1,7 @@
 package io.github.doubletree.iam.platform.authorization;
 
 import io.github.doubletree.iam.platform.domain.Client;
+import java.time.Duration;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
@@ -23,6 +24,7 @@ public class RegisteredClientMapper {
                         .build())
                 .tokenSettings(TokenSettings.builder()
                         .accessTokenFormat(OAuth2TokenFormat.SELF_CONTAINED)
+                        .accessTokenTimeToLive(Duration.ofMinutes(30))
                         .build());
 
         client.getAuthenticationMethods()
