@@ -34,6 +34,8 @@ The codebase currently includes:
   uniqueness checks, and cleaner validation errors.
 - Repository-backed Spring Authorization Server `RegisteredClientRepository`
   integration for persisted OAuth2 client registrations.
+- Dev-profile bootstrap data for local Admin Console testing with a persisted
+  development tenant and OAuth2 client.
 - End-to-end OAuth2 authorization-code login flow using local users,
   persisted confidential clients, JWT token issuance, and scope-protected API
   access.
@@ -196,6 +198,7 @@ Completed slices:
   OAuth2 client, MFA, and audit log management screens.
 - OAuth2 authorization-code demo helper with generated authorization URL and
   token exchange guidance.
+- Local development token workflow backed by dev-only OAuth2 client bootstrap.
 - Frontend build verification through `npm run build`.
 
 Candidate slices:

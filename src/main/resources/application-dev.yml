@@ -1,0 +1,7 @@
+# Activating the dev profile seeds local-only bootstrap data for the Admin Console.
+# Run with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+
+# The dev bootstrap creates:
+# - tenant slug: development
+# - OAuth2 client: international-iam-dev / secret
+# These values are for local development only and must not be used in production.

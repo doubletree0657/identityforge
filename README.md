@@ -108,7 +108,7 @@ docker compose up -d
 Run the application:
 
 ```bash
-./mvnw spring-boot:run
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 Health check:
@@ -129,10 +129,22 @@ Open `http://localhost:5173`. The frontend defaults to
 `http://localhost:8080` for backend calls. Override it with
 `VITE_API_BASE_URL` or with the API base URL field in the console header.
 
-Paste a development OAuth2 access token with `iam.read` and/or `iam.write`
-scopes into the token panel. The token is stored in local storage for local
-development only. Do not paste passwords, client secrets, refresh tokens, or
-other long-lived production credentials.
+With the `dev` Spring profile active, the backend creates local-only bootstrap
+data: tenant `development` and OAuth2 client `international-iam-dev` with
+secret `secret`. Get a development token:
+
+```bash
+curl -u international-iam-dev:secret -X POST http://localhost:8080/oauth2/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" \
+  -d "scope=iam.read iam.write"
+```
+
+Paste the returned access token into the Admin Console token panel. The token
+is stored in local storage for local development only. Do not paste passwords,
+client secrets, refresh tokens, or other long-lived production credentials.
+The dev bootstrap data is only created by the `dev` profile and must not be
+used as production initialization.
 
 Build the frontend:
 

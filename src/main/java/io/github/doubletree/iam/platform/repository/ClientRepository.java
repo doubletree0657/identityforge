@@ -18,6 +18,9 @@ public interface ClientRepository extends JpaRepository<Client, UUID> {
     @EntityGraph(attributePaths = {"redirectUris", "grantTypes", "scopes", "authenticationMethods"})
     List<Client> findAllByClientId(String clientId);
 
+    @EntityGraph(attributePaths = {"redirectUris", "grantTypes", "scopes", "authenticationMethods"})
+    Optional<Client> findByTenantIdAndClientId(UUID tenantId, String clientId);
+
     @Override
     @EntityGraph(attributePaths = {"redirectUris", "grantTypes", "scopes", "authenticationMethods"})
     Optional<Client> findById(UUID id);
