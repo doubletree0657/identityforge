@@ -36,11 +36,11 @@ The codebase currently includes:
   integration for persisted OAuth2 client registrations.
 - Dev-profile bootstrap data for local Admin Console testing with a persisted
   development tenant and OAuth2 client.
-- End-to-end OAuth2 authorization-code login flow using local users,
-  persisted confidential clients, JWT token issuance, and scope-protected API
-  access.
-- Spring Security default form login for early browser-based authorization
-  integration.
+- Productized OAuth2 authorization-code flow using local users, account status
+  checks, optional TOTP challenge, persisted confidential clients, project-owned
+  consent, JWT token issuance, and scope-protected API access.
+- Backend-owned login, MFA challenge, and OAuth2 consent pages for browser-based
+  authorization demos.
 - TOTP enrollment and verification, including encrypted MFA secret storage.
 - SCIM-style user and group provisioning APIs.
 - Dockerfile, local PostgreSQL/Redis Compose services, and GitLab CI stages for
@@ -51,9 +51,9 @@ The codebase currently includes:
   role-permission, OAuth2 client, MFA, audit log workflows, an IAM workflow demo
   page, and an OAuth2 authorization-code demo helper.
 
-Current login support is an integration step, not a product-grade authentication
-experience. It should be expanded into a designed authentication flow before the
-project presents it as a user-facing IAM capability.
+The browser login and consent experience is now demonstrable for local IAM
+flows. It is still not a full production session product and should be hardened
+further before real deployment.
 
 ## Project Realignment
 
@@ -108,14 +108,17 @@ Completed in the current slice:
 
 - Persistent confidential client authorization-code scenario.
 - Browser-style redirect to login and resumed authorization request.
+- Project-owned consent page for clients that require consent, with scope
+  descriptions and approve/deny behavior.
 - Authorization code exchange for a self-contained JWT access token.
 - Protected `/api/**` access with `iam.read` and rejection without the required
   scope.
+- Authentication and consent audit events that avoid passwords, TOTP material,
+  client secrets, authorization codes, tokens, and signing keys.
 
 Candidate slices:
 
 - PKCE support for public clients.
-- Productized consent and login pages.
 - Broader manual seed/bootstrap workflow for local demos.
 
 ## Productized Authentication
@@ -124,14 +127,24 @@ Goal: replace the current default form login dependency with a deliberate
 authentication experience and backend behavior suitable for an IAM product
 portfolio project.
 
+Completed slices:
+
+- Project-owned `/login` page with generic login failure behavior.
+- Account status handling for disabled and locked users.
+- TOTP login challenge for users with enabled verified credentials.
+- Audit events for login success, login failure, blocked login, MFA challenge
+  success/failure, OAuth2 consent approval/denial, and logout where practical.
+- Clear boundaries between browser login sessions and OAuth2-protected APIs.
+
 Candidate slices:
 
-- Designed login route and response behavior.
-- Account status handling for disabled, locked, expired, and incomplete users.
-- Password policy and safe password change flows.
-- Generic failure behavior that avoids account enumeration.
-- Session handling and logout behavior.
-- Clear boundaries between browser login sessions and OAuth2-protected APIs.
+- Production frontend session model.
+- OIDC UserInfo.
+- Recovery codes.
+- Passkeys/WebAuthn.
+- Enterprise-grade risk-based authentication.
+- Full production hardening.
+- Password policy and safe password reset/change flows.
 
 ## OAuth2 Client Management
 
@@ -229,7 +242,6 @@ challenge, verification, recovery, and audit behavior.
 Candidate slices:
 
 - TOTP enrollment lifecycle.
-- MFA challenge during login.
 - Recovery code generation and verification.
 - Step-up authentication for sensitive actions.
 - Secret encryption, rotation strategy, and exposure tests.

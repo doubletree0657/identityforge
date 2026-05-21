@@ -22,6 +22,14 @@ public class AuditApplicationService {
     }
 
     public AuditLog recordEvent(UUID tenantId, String action, String resourceType, UUID resourceId) {
+        return recordEvent(tenantId, action, resourceType, resourceId, AuditResult.SUCCESS);
+    }
+
+    public AuditLog recordFailure(UUID tenantId, String action, String resourceType, UUID resourceId) {
+        return recordEvent(tenantId, action, resourceType, resourceId, AuditResult.FAILURE);
+    }
+
+    private AuditLog recordEvent(UUID tenantId, String action, String resourceType, UUID resourceId, AuditResult result) {
         return auditLogRepository.save(AuditLog.record(
                 tenantId,
                 AuditActorType.API_CLIENT,
@@ -29,7 +37,7 @@ public class AuditApplicationService {
                 action,
                 resourceType,
                 resourceId,
-                AuditResult.SUCCESS));
+                result));
     }
 
     public Page<AuditLog> listAuditLogs(

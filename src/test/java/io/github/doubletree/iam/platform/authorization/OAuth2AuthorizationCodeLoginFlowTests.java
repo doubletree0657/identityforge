@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -20,9 +21,15 @@ import io.github.doubletree.iam.platform.application.service.UserApplicationServ
 import io.github.doubletree.iam.platform.domain.ClientType;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
+import io.github.doubletree.iam.platform.repository.AuditLogRepository;
+import java.net.URLDecoder;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -69,6 +76,9 @@ class OAuth2AuthorizationCodeLoginFlowTests {
 
     @Autowired
     private ClientApplicationService clientApplicationService;
+
+    @Autowired
+    private AuditLogRepository auditLogRepository;
 
     @DynamicPropertySource
     static void registerDataSourceProperties(DynamicPropertyRegistry registry) {
@@ -124,7 +134,49 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void consentPageApprovalAndDenialUseOAuth2ErrorBehaviorAndAuditEvents() throws Exception {
+        auditLogRepository.deleteAll();
+        FlowFixture fixture = createFlowFixture(true);
+
+        StartedAuthorization approvalStart = startAuthorizationRequestExpectingLogin(
+                fixture.client().client().getClientId(), "iam.read iam.write", "approval-state");
+        AuthenticatedSession approvalSession = login(approvalStart.session(), fixture.user().getUsername());
+        String approvalConsentUrl = expectConsentRedirect(
+                approvalSession.session(), approvalSession.authorizationRedirect());
+
+        mockMvc.perform(get(URI.create(approvalConsentUrl)).session(approvalSession.session()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Authorize OAuth Flow Demo Client")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("iam.read")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("iam.write")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("clientSecret"))));
+
+        String approvalRedirect = submitConsent(
+                approvalSession.session(), approvalConsentUrl, fixture.client().client().getClientId(), true);
+        assertThat(extractCode(approvalRedirect, "approval-state")).isNotBlank();
+
+        FlowFixture denialFixture = createFlowFixture(true);
+        StartedAuthorization denialStart = startAuthorizationRequestExpectingLogin(
+                denialFixture.client().client().getClientId(), "iam.read iam.write", "denial-state");
+        AuthenticatedSession denialSession = login(denialStart.session(), denialFixture.user().getUsername());
+        String denialConsentUrl = expectConsentRedirect(denialSession.session(), denialSession.authorizationRedirect());
+        String denialRedirect = submitConsent(
+                denialSession.session(), denialConsentUrl, denialFixture.client().client().getClientId(), false);
+        var denialParams = UriComponentsBuilder.fromUriString(denialRedirect).build().getQueryParams();
+
+        assertThat(denialParams.getFirst("error")).isEqualTo("access_denied");
+        assertThat(denialParams.getFirst("code")).isNull();
+        assertThat(denialRedirect).doesNotContain(fixture.client().clientSecret(), denialFixture.client().clientSecret());
+        assertThat(auditLogRepository.findByAction("OAUTH2_CONSENT_APPROVED")).isNotEmpty();
+        assertThat(auditLogRepository.findByAction("OAUTH2_CONSENT_DENIED")).isNotEmpty();
+    }
+
     private FlowFixture createFlowFixture() {
+        return createFlowFixture(false);
+    }
+
+    private FlowFixture createFlowFixture(boolean requireConsent) {
         String uniqueSuffix = UUID.randomUUID().toString();
         Tenant tenant = tenantApplicationService.createTenant("OAuth2 Flow Tenant " + uniqueSuffix);
         User user = userApplicationService.createUser(
@@ -137,7 +189,7 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                 "OAuth Flow Demo Client",
                 ClientType.CONFIDENTIAL,
                 false,
-                false,
+                requireConsent,
                 Set.of(REDIRECT_URI),
                 Set.of("authorization_code"),
                 Set.of("iam.read", "iam.write"),
@@ -195,6 +247,48 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                 .andReturn();
 
         return result.getResponse().getRedirectedUrl();
+    }
+
+    private String expectConsentRedirect(MockHttpSession session, String authorizationUrl) throws Exception {
+        MvcResult result = mockMvc.perform(get(URI.create(authorizationUrl)).session(session))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, startsWith("http://localhost/oauth2/consent?")))
+                .andReturn();
+        return result.getResponse().getRedirectedUrl();
+    }
+
+    private String submitConsent(
+            MockHttpSession session,
+            String consentUrl,
+            String clientId,
+            boolean approve) throws Exception {
+        Map<String, String> params = decodedQueryParams(consentUrl);
+        var requestBuilder = post("/oauth2/authorize")
+                .session(session)
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .param("client_id", clientId)
+                .param("state", params.get("state"));
+        if (approve) {
+            for (String scope : params.get("scope").split(" ")) {
+                requestBuilder.param("scope", scope);
+            }
+        }
+
+        MvcResult result = mockMvc.perform(requestBuilder)
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, startsWith(REDIRECT_URI + "?")))
+                .andReturn();
+        return result.getResponse().getRedirectedUrl();
+    }
+
+    private Map<String, String> decodedQueryParams(String url) {
+        String rawQuery = URI.create(url).getRawQuery();
+        return Arrays.stream(rawQuery.split("&"))
+                .map(part -> part.split("=", 2))
+                .collect(Collectors.toMap(
+                        part -> URLDecoder.decode(part[0], StandardCharsets.UTF_8),
+                        part -> part.length > 1 ? URLDecoder.decode(part[1], StandardCharsets.UTF_8) : ""));
     }
 
     private String exchangeCodeForAccessToken(String clientId, String clientSecret, String code) throws Exception {

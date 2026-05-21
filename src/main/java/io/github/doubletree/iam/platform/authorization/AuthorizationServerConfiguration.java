@@ -5,6 +5,13 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import io.github.doubletree.iam.platform.application.service.AuditApplicationService;
+import io.github.doubletree.iam.platform.security.authentication.MfaAuthenticationSuccessHandler;
+import io.github.doubletree.iam.platform.security.authentication.PlatformUserDetails;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
@@ -15,35 +22,62 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationConsentService;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationException;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationToken;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
+import org.springframework.security.web.DefaultRedirectStrategy;
+import org.springframework.security.web.RedirectStrategy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.util.StringUtils;
+import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.util.UriUtils;
 
 @Configuration
 public class AuthorizationServerConfiguration {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
-    SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain authorizationServerSecurityFilterChain(
+            HttpSecurity http,
+            AuditApplicationService auditApplicationService) throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 OAuth2AuthorizationServerConfigurer.authorizationServer();
         RequestMatcher authorizationServerEndpointsMatcher = authorizationServerConfigurer.getEndpointsMatcher();
 
         http
                 .securityMatcher(authorizationServerEndpointsMatcher)
-                .with(authorizationServerConfigurer, Customizer.withDefaults())
+                .with(authorizationServerConfigurer, authorizationServer -> authorizationServer
+                        .authorizationEndpoint(authorizationEndpoint -> authorizationEndpoint
+                                .consentPage("/oauth2/consent")
+                                .authorizationResponseHandler((request, response, authentication) -> {
+                                    auditConsent(request, authentication, auditApplicationService, true);
+                                    sendAuthorizationResponse(request, response, authentication);
+                                })
+                                .errorResponseHandler((request, response, exception) -> {
+                                    auditConsent(request, null, auditApplicationService, false);
+                                    sendErrorResponse(request, response, exception);
+                                })))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
                         new LoginUrlAuthenticationEntryPoint("/login"),
@@ -53,9 +87,12 @@ public class AuthorizationServerConfiguration {
         return http.build();
     }
 
-    @Bean    
+    @Bean
     @Order(Ordered.LOWEST_PRECEDENCE)
-    SecurityFilterChain applicationSecurityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain applicationSecurityFilterChain(
+            HttpSecurity http,
+            MfaAuthenticationSuccessHandler mfaAuthenticationSuccessHandler,
+            AuditApplicationService auditApplicationService) throws Exception {
         RequestMatcher apiEndpointsMatcher = new OrRequestMatcher(
                 AntPathRequestMatcher.antMatcher("/api/**"),
                 AntPathRequestMatcher.antMatcher("/scim/v2/**"));
@@ -63,6 +100,8 @@ public class AuthorizationServerConfiguration {
         http
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/health").permitAll()
+                        .requestMatchers("/login", "/login/mfa", "/logout-success").permitAll()
+                        .requestMatchers("/oauth2/consent").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/**").hasAuthority("SCOPE_iam.write")
                         .requestMatchers(HttpMethod.PUT, "/api/**").hasAuthority("SCOPE_iam.write")
                         .requestMatchers(HttpMethod.PATCH, "/api/**").hasAuthority("SCOPE_iam.write")
@@ -71,8 +110,12 @@ public class AuthorizationServerConfiguration {
                         .requestMatchers(HttpMethod.POST, "/scim/v2/**").hasAuthority("SCOPE_iam.write")
                         .requestMatchers("/scim/v2/**").hasAuthority("SCOPE_iam.read")
                         .anyRequest().permitAll())
-                .formLogin(Customizer.withDefaults())
-                .logout(Customizer.withDefaults())
+                .formLogin(form -> form
+                        .loginPage("/login")
+                        .failureUrl("/login?error")
+                        .successHandler(mfaAuthenticationSuccessHandler)
+                        .permitAll())
+                .logout(logout -> logout.logoutSuccessHandler(logoutSuccessHandler(auditApplicationService)))
                 .exceptionHandling(exceptions -> exceptions
                         .defaultAuthenticationEntryPointFor(
                                 new BearerTokenAuthenticationEntryPoint(),
@@ -85,6 +128,115 @@ public class AuthorizationServerConfiguration {
                 .csrf(csrf -> csrf.ignoringRequestMatchers(apiEndpointsMatcher));
 
         return http.build();
+    }
+
+    private LogoutSuccessHandler logoutSuccessHandler(AuditApplicationService auditApplicationService) {
+        return (request, response, authentication) -> {
+            if (authentication != null && authentication.getPrincipal() instanceof PlatformUserDetails userDetails) {
+                auditApplicationService.recordEvent(
+                        userDetails.tenantId(), "USER_LOGGED_OUT", "USER", userDetails.userId());
+            }
+            response.sendRedirect("/login?logout");
+        };
+    }
+
+    private void auditConsent(
+            HttpServletRequest request,
+            Authentication authentication,
+            AuditApplicationService auditApplicationService,
+            boolean approved) {
+        if (!isConsentPost(request)) {
+            return;
+        }
+        Authentication principal = authentication;
+        if (principal instanceof OAuth2AuthorizationCodeRequestAuthenticationToken authorization) {
+            Object authorizationPrincipal = authorization.getPrincipal();
+            principal = authorizationPrincipal instanceof Authentication userAuthentication
+                    ? userAuthentication
+                    : null;
+        }
+        if (principal == null) {
+            principal = org.springframework.security.core.context.SecurityContextHolder
+                    .getContext()
+                    .getAuthentication();
+        }
+        if (principal != null && principal.getPrincipal() instanceof PlatformUserDetails userDetails) {
+            auditApplicationService.recordEvent(
+                    userDetails.tenantId(),
+                    approved ? "OAUTH2_CONSENT_APPROVED" : "OAUTH2_CONSENT_DENIED",
+                    "USER",
+                    userDetails.userId());
+        }
+    }
+
+    private boolean isConsentPost(HttpServletRequest request) {
+        return "POST".equals(request.getMethod())
+                && request.getRequestURI().endsWith("/oauth2/authorize")
+                && request.getParameter(OAuth2ParameterNames.CLIENT_ID) != null
+                && request.getParameter(OAuth2ParameterNames.STATE) != null
+                && request.getParameter(OAuth2ParameterNames.RESPONSE_TYPE) == null;
+    }
+
+    private void sendAuthorizationResponse(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            Authentication authentication) throws IOException {
+        OAuth2AuthorizationCodeRequestAuthenticationToken authorization =
+                (OAuth2AuthorizationCodeRequestAuthenticationToken) authentication;
+        UriComponentsBuilder uriBuilder = UriComponentsBuilder
+                .fromUriString(authorization.getRedirectUri())
+                .queryParam(OAuth2ParameterNames.CODE, authorization.getAuthorizationCode().getTokenValue());
+        if (StringUtils.hasText(authorization.getState())) {
+            uriBuilder.queryParam(
+                    OAuth2ParameterNames.STATE,
+                    UriUtils.encode(authorization.getState(), StandardCharsets.UTF_8));
+        }
+        redirectStrategy().sendRedirect(request, response, uriBuilder.build(true).toUriString());
+    }
+
+    private void sendErrorResponse(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            AuthenticationException exception) throws IOException {
+        OAuth2AuthorizationCodeRequestAuthenticationException authorizationException =
+                (OAuth2AuthorizationCodeRequestAuthenticationException) exception;
+        OAuth2Error error = authorizationException.getError();
+        OAuth2AuthorizationCodeRequestAuthenticationToken authorization =
+                authorizationException.getAuthorizationCodeRequestAuthentication();
+
+        if (authorization == null || !StringUtils.hasText(authorization.getRedirectUri())) {
+            response.sendError(HttpStatus.BAD_REQUEST.value(), error.toString());
+            return;
+        }
+
+        UriComponentsBuilder uriBuilder = UriComponentsBuilder
+                .fromUriString(authorization.getRedirectUri())
+                .queryParam(OAuth2ParameterNames.ERROR, error.getErrorCode());
+        if (StringUtils.hasText(error.getDescription())) {
+            uriBuilder.queryParam(
+                    OAuth2ParameterNames.ERROR_DESCRIPTION,
+                    UriUtils.encode(error.getDescription(), StandardCharsets.UTF_8));
+        }
+        if (StringUtils.hasText(error.getUri())) {
+            uriBuilder.queryParam(
+                    OAuth2ParameterNames.ERROR_URI,
+                    UriUtils.encode(error.getUri(), StandardCharsets.UTF_8));
+        }
+        if (StringUtils.hasText(authorization.getState())) {
+            uriBuilder.queryParam(
+                    OAuth2ParameterNames.STATE,
+                    UriUtils.encode(authorization.getState(), StandardCharsets.UTF_8));
+        }
+        redirectStrategy().sendRedirect(request, response, uriBuilder.build(true).toUriString());
+    }
+
+    private RedirectStrategy redirectStrategy() {
+        return new DefaultRedirectStrategy();
+    }
+
+    @Bean
+    OAuth2AuthorizationConsentService authorizationConsentService() {
+        return new InMemoryOAuth2AuthorizationConsentService();
     }
 
     @Bean

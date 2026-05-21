@@ -3,6 +3,7 @@ package io.github.doubletree.iam.platform.authorization;
 import static org.hamcrest.Matchers.startsWith;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestBuilders.formLogin;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
 import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.unauthenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -17,9 +18,14 @@ import io.github.doubletree.iam.platform.domain.Client;
 import io.github.doubletree.iam.platform.domain.PasswordCredential;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
+import io.github.doubletree.iam.platform.application.service.MfaApplicationService;
+import io.github.doubletree.iam.platform.application.result.MfaEnrollmentResult;
+import io.github.doubletree.iam.platform.repository.AuditLogRepository;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
+import java.lang.reflect.Method;
+import java.time.Instant;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,6 +71,12 @@ class HttpLoginFlowTests {
     @Autowired
     private ClientRepository clientRepository;
 
+    @Autowired
+    private MfaApplicationService mfaApplicationService;
+
+    @Autowired
+    private AuditLogRepository auditLogRepository;
+
     @DynamicPropertySource
     static void registerDataSourceProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -75,6 +87,7 @@ class HttpLoginFlowTests {
 
     @BeforeEach
     void seedDevelopmentClient() {
+        auditLogRepository.deleteAll();
         if (!clientRepository.findAllByClientId("international-iam-dev").isEmpty()) {
             return;
         }
@@ -89,6 +102,16 @@ class HttpLoginFlowTests {
         client.setScopes(Set.of("iam.read", "iam.write"));
         client.setAuthenticationMethods(Set.of("client_secret_basic"));
         clientRepository.saveAndFlush(client);
+    }
+
+    @Test
+    void customLoginPageIsAvailable() throws Exception {
+        mockMvc.perform(get("/login"))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                        .contains("IAM Sign In")
+                        .contains("username")
+                        .contains("password"));
     }
 
     @Test
@@ -109,6 +132,13 @@ class HttpLoginFlowTests {
         createUser("http-wrong-password-user", PASSWORD, AccountStatus.ACTIVE);
 
         assertLoginFails("http-wrong-password-user", "wrong-password");
+
+        assertThat(auditLogRepository.findByAction("USER_AUTHENTICATION_FAILED"))
+                .singleElement()
+                .satisfies(auditLog -> {
+                    assertThat(auditLog.getResult().name()).isEqualTo("FAILURE");
+                    assertAuditLogDoesNotContainSecrets(auditLog);
+                });
     }
 
     @Test
@@ -130,6 +160,52 @@ class HttpLoginFlowTests {
         createUser(username, PASSWORD, accountStatus);
 
         assertLoginFails(username, PASSWORD);
+        assertThat(auditLogRepository.findByAction("USER_AUTHENTICATION_BLOCKED"))
+                .singleElement()
+                .satisfies(auditLog -> {
+                    assertThat(auditLog.getResult().name()).isEqualTo("FAILURE");
+                    assertAuditLogDoesNotContainSecrets(auditLog);
+                });
+    }
+
+    @Test
+    void userWithVerifiedTotpCredentialMustCompleteMfaChallenge() throws Exception {
+        User user = createUser("http-mfa-user", PASSWORD, AccountStatus.ACTIVE);
+        MfaEnrollmentResult enrollment = mfaApplicationService.enrollTotp(user.getId());
+        String code = generateTotpCode(enrollment.secret());
+        assertThat(mfaApplicationService.verifyTotp(user.getId(), code)).isTrue();
+
+        MvcResult passwordResult = mockMvc.perform(formLogin().user(user.getUsername()).password(PASSWORD))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/login/mfa"))
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) passwordResult.getRequest().getSession(false);
+
+        mockMvc.perform(post("/login/mfa")
+                        .session(session)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("code", "000000"))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/login/mfa?error"))
+                .andExpect(unauthenticated());
+
+        mockMvc.perform(post("/login/mfa")
+                        .session(session)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("code", generateTotpCode(enrollment.secret())))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/"))
+                .andExpect(authenticated().withUsername(user.getUsername()));
+
+        assertThat(auditLogRepository.findByAction("MFA_CHALLENGE_FAILED"))
+                .singleElement()
+                .satisfies(this::assertAuditLogDoesNotContainSecrets);
+        assertThat(auditLogRepository.findByAction("MFA_CHALLENGE_SUCCEEDED"))
+                .singleElement()
+                .satisfies(this::assertAuditLogDoesNotContainSecrets);
     }
 
     @Test
@@ -221,5 +297,22 @@ class HttpLoginFlowTests {
         User user = User.create(tenant, username, username + " Display");
         user.setAccountStatus(accountStatus);
         return userRepository.save(user);
+    }
+
+    private String generateTotpCode(String secret) throws Exception {
+        Method method = MfaApplicationService.class.getDeclaredMethod("generateTotpCode", String.class, Instant.class);
+        method.setAccessible(true);
+        return (String) method.invoke(mfaApplicationService, secret, Instant.now());
+    }
+
+    private void assertAuditLogDoesNotContainSecrets(Object auditLog) {
+        String rendered = auditLog.toString();
+        assertThat(rendered)
+                .doesNotContain("correct-password-123")
+                .doesNotContain("000000")
+                .doesNotContain("secret")
+                .doesNotContain("ciphertext")
+                .doesNotContain("access_token")
+                .doesNotContain("authorization_code");
     }
 }

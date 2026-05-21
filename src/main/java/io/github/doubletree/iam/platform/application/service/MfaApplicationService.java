@@ -85,6 +85,37 @@ public class MfaApplicationService {
         return valid;
     }
 
+    @Transactional(readOnly = true)
+    public boolean requiresTotpChallenge(UUID userId) {
+        return totpCredentialRepository.findByUserId(userId)
+                .filter(TotpCredential::isEnabled)
+                .filter(credential -> credential.getVerifiedAt() != null)
+                .isPresent();
+    }
+
+    @Transactional
+    public boolean verifyTotpChallenge(UUID userId, String code) {
+        User requestedUser = findUser(userId);
+        TotpCredential credential = totpCredentialRepository.findByUserId(userId).orElse(null);
+        if (credential == null || !credential.isEnabled() || credential.getVerifiedAt() == null
+                || credential.getSecretCiphertext() == null) {
+            auditApplicationService.recordFailure(
+                    requestedUser.getTenant().getId(), "MFA_CHALLENGE_FAILED", "USER", userId);
+            return false;
+        }
+
+        String secret = secretEncryptionService.decrypt(credential.getSecretCiphertext());
+        boolean valid = isValidTotpCode(secret, code, Instant.now());
+        if (valid) {
+            auditApplicationService.recordEvent(
+                    credential.getUser().getTenant().getId(), "MFA_CHALLENGE_SUCCEEDED", "USER", userId);
+        } else {
+            auditApplicationService.recordFailure(
+                    credential.getUser().getTenant().getId(), "MFA_CHALLENGE_FAILED", "USER", userId);
+        }
+        return valid;
+    }
+
     @Transactional
     public void disableTotp(UUID userId) {
         User user = findUser(userId);

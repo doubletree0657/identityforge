@@ -3,6 +3,8 @@ package io.github.doubletree.iam.platform.security.authentication;
 import io.github.doubletree.iam.platform.application.service.AuditApplicationService;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -36,7 +38,16 @@ public class LocalUserAuthenticationProvider implements AuthenticationProvider {
                 ? ""
                 : authentication.getCredentials().toString();
 
-        if (!canAuthenticate(userDetails) || !passwordMatches(rawPassword, userDetails.password())) {
+        if (!canAuthenticate(userDetails)) {
+            auditApplicationService.recordFailure(
+                    userDetails.tenantId(), "USER_AUTHENTICATION_BLOCKED", "USER", userDetails.userId());
+            if (!userDetails.isAccountNonLocked()) {
+                throw new LockedException(GENERIC_AUTHENTICATION_FAILURE);
+            }
+            throw new DisabledException(GENERIC_AUTHENTICATION_FAILURE);
+        }
+
+        if (!passwordMatches(rawPassword, userDetails.password())) {
             auditAuthenticationFailure(userDetails);
             throw new BadCredentialsException(GENERIC_AUTHENTICATION_FAILURE);
         }
@@ -78,7 +89,7 @@ public class LocalUserAuthenticationProvider implements AuthenticationProvider {
     }
 
     private void auditAuthenticationFailure(PlatformUserDetails userDetails) {
-        auditApplicationService.recordEvent(
+        auditApplicationService.recordFailure(
                 userDetails.tenantId(), "USER_AUTHENTICATION_FAILED", "USER", userDetails.userId());
     }
 }

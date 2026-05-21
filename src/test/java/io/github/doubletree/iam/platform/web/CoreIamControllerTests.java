@@ -45,6 +45,7 @@ import io.github.doubletree.iam.platform.domain.UserAttribute;
 import io.github.doubletree.iam.platform.domain.UserAttributeValueType;
 import io.github.doubletree.iam.platform.domain.UserProfile;
 import io.github.doubletree.iam.platform.security.PasswordEncodingConfiguration;
+import io.github.doubletree.iam.platform.security.authentication.MfaAuthenticationSuccessHandler;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -114,6 +115,9 @@ class CoreIamControllerTests {
 
     @MockitoBean
     private RegisteredClientRepository registeredClientRepository;
+
+    @MockitoBean
+    private MfaAuthenticationSuccessHandler mfaAuthenticationSuccessHandler;
 
     private final RequestPostProcessor writeScopeJwt = jwt()
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.write"));

@@ -19,9 +19,9 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -146,7 +146,7 @@ class LocalUserAuthenticationProviderTests {
     private void assertAuthenticationFails(String username, String password) {
         assertThatThrownBy(() -> authenticationManager.authenticate(
                         UsernamePasswordAuthenticationToken.unauthenticated(username, password)))
-                .isInstanceOf(BadCredentialsException.class)
+                .isInstanceOf(AuthenticationException.class)
                 .hasMessage(GENERIC_AUTHENTICATION_FAILURE);
     }
 

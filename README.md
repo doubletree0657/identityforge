@@ -41,9 +41,9 @@ handling, OpenAPI output, JWT/JWK support, scope-protected APIs, audit logging,
 TOTP enrollment and verification, encrypted MFA secret storage, SCIM-style user
 and group APIs, OAuth2 client management APIs with secret rotation, repository-
 backed Spring Authorization Server client lookup, an end-to-end tested OAuth2
-authorization-code login flow, a Dockerfile, local PostgreSQL/Redis Compose
-services, a React TypeScript Admin Console under `frontend/`, and a GitLab CI
-pipeline.
+authorization-code login flow, backend-owned login, TOTP challenge, and OAuth2
+consent pages, a Dockerfile, local PostgreSQL/Redis Compose services, a React
+TypeScript Admin Console under `frontend/`, and a GitLab CI pipeline.
 
 The Admin API surface is completed and hardened for frontend consumption.
 Current management APIs cover tenants, users, profiles, custom user attributes,
@@ -63,11 +63,12 @@ identity fields, separate user profiles, separate password and TOTP
 credentials, custom attributes, explicit group memberships, tenant-scoped
 RBAC, OAuth2 client registration concepts, and security event metadata.
 
-Login support currently uses Spring Security's default server-side form login as
-an early integration step for browser-based authorization work. It is not a
-product-grade login experience, does not include a frontend, and does not by
-itself grant access to management or SCIM APIs. Those APIs remain protected by
-OAuth2 JWT scope checks.
+Browser authentication is backend-owned rather than part of the React Admin
+Console. The project provides `/login`, `/login/mfa`, and `/oauth2/consent`
+pages for local user login, account status enforcement, optional TOTP challenge
+for verified credentials, and consent for OAuth2 clients that require it. These
+pages support the authorization-code journey; management and SCIM APIs remain
+protected by OAuth2 JWT scope checks.
 
 ## Tech Stack
 
@@ -204,8 +205,9 @@ under `/scim/v2/**` require OAuth2 JWT scopes:
 
 ## OAuth2 Authorization Code Demo
 
-The backend now supports a development authorization-code flow using persisted
-OAuth2 clients and local username/password login.
+The backend now supports a productized development authorization-code flow using
+persisted OAuth2 clients, local username/password login, optional TOTP challenge,
+and project-owned consent.
 
 At a high level:
 
@@ -220,15 +222,27 @@ At a high level:
 /oauth2/authorize?response_type=code&client_id=<client-id>&redirect_uri=<redirect-uri>&scope=iam.read&state=<state>
 ```
 
-4. The browser is redirected to `/login`; after local form login, the
-   authorization server redirects back to the client redirect URI with a code.
-5. Exchange the code at `/oauth2/token` with the confidential client's
+4. The browser is redirected to `/login`; disabled and locked users are blocked
+   with generic failure messages.
+5. If the user has an enabled verified TOTP credential, `/login/mfa` must be
+   completed before the authorization request continues.
+6. If the client requires consent, `/oauth2/consent` shows the client name,
+   requested scopes, scope descriptions, and the authenticated user.
+7. After approval, the authorization server redirects back to the client
+   redirect URI with a code. Denial returns the OAuth2 `access_denied` response.
+8. Exchange the code at `/oauth2/token` with the confidential client's
    authentication and use the returned bearer token on `/api/**` requests that
    require `iam.read`.
 
 The executable integration test
 `OAuth2AuthorizationCodeLoginFlowTests` seeds this setup and proves the full
-flow end to end.
+flow end to end. Authentication and consent audit events are recorded without
+raw passwords, password hashes, TOTP codes, TOTP secrets, client secrets,
+authorization codes, tokens, or signing keys.
+
+Future authentication work remains intentionally out of scope here: a production
+frontend session model, OIDC UserInfo, recovery codes, passkeys/WebAuthn,
+enterprise risk-based authentication, and full production hardening.
 
 ## Roadmap
 
