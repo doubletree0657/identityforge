@@ -43,5 +43,9 @@ build/
 *.tmp
 *.temp
 
+### Frontend (Admin Console) ###
+frontend/node_modules/
+frontend/dist/
+
 ### Local utility scripts ###
 scripts/git-push.sh

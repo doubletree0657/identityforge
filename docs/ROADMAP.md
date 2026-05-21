@@ -43,6 +43,10 @@ The codebase currently includes:
 - SCIM-style user and group provisioning APIs.
 - Dockerfile, local PostgreSQL/Redis Compose services, and GitLab CI stages for
   test, package, and Docker image build.
+- React TypeScript Admin Console under `frontend/` with real Admin API
+  integration, development bearer-token configuration, resource management
+  screens, MFA operations, audit log queries, and an OAuth2 authorization-code
+  demo helper.
 
 Current login support is an integration step, not a product-grade authentication
 experience. It should be expanded into a designed authentication flow before the
@@ -144,7 +148,7 @@ Completed slices:
 
 ## Backend Admin API Surface
 
-Status: active track.
+Status: implemented baseline.
 
 Goal: provide a coherent backend API layer that can support a future React Admin
 Console without exposing credential internals.
@@ -169,10 +173,36 @@ Completed slices:
 
 Candidate slices:
 
-- Admin Console frontend.
 - Richer search filters.
 - More complete lifecycle workflows for account state, group ownership, and
   delegated administration.
+
+## React Admin Console
+
+Status: implemented baseline.
+
+Goal: provide a portfolio-grade full-stack console that demonstrates the IAM
+platform through real backend Admin APIs without adding production frontend
+authentication.
+
+Completed slices:
+
+- Vite React TypeScript frontend under `frontend/`.
+- Development API base URL and bearer-token panel.
+- Admin layout with navigation, loading states, error states, empty states, and
+  reusable tables/pagination.
+- Dashboard overview backed by paginated Admin APIs.
+- Tenant, user, user detail, profile, attribute, group, role, permission,
+  OAuth2 client, MFA, and audit log management screens.
+- OAuth2 authorization-code demo helper with generated authorization URL and
+  token exchange guidance.
+- Frontend build verification through `npm run build`.
+
+Candidate slices:
+
+- Production authentication and session model.
+- Designed login, consent, and MFA challenge screens.
+- UI-level automated tests and richer interaction coverage.
 
 ## MFA and Strong Authentication
 

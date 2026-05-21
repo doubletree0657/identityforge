@@ -1,8 +1,9 @@
 # international-iam-platform
 
-`international-iam-platform` is a backend-focused identity and access
-management platform project built with Java 21, Spring Boot, Spring Security,
-Spring Authorization Server, PostgreSQL, Docker, and CI/CD practice.
+`international-iam-platform` is an identity and access management platform
+project built with Java 21, Spring Boot, Spring Security, Spring Authorization
+Server, PostgreSQL, Docker, CI/CD practice, and a React TypeScript Admin
+Console.
 
 The project exists as a portfolio-grade engineering workspace for modern Java
 backend development, identity security, OAuth2, MFA, SCIM-style provisioning,
@@ -11,8 +12,8 @@ interview preparation for international backend roles.
 
 It is under active development and is not production-ready. The current code is
 useful for demonstrating implementation direction, design judgment, testing
-practice, and incremental delivery, but it should not be treated as a complete
-IAM product or deployed for real users.
+practice, full-stack integration, and incremental delivery, but it should not
+be treated as a complete IAM product or deployed for real users.
 
 ## Technical Focus
 
@@ -27,6 +28,7 @@ The project targets these areas:
 - SCIM-style user and group provisioning APIs.
 - PostgreSQL persistence with Flyway migrations and JPA.
 - Docker-based local services and CI/CD workflows.
+- React TypeScript Admin Console integration against real Admin APIs.
 - Testcontainers-backed integration testing.
 - Clear documentation for code review and interview discussion.
 
@@ -40,15 +42,17 @@ TOTP enrollment and verification, encrypted MFA secret storage, SCIM-style user
 and group APIs, OAuth2 client management APIs with secret rotation, repository-
 backed Spring Authorization Server client lookup, an end-to-end tested OAuth2
 authorization-code login flow, a Dockerfile, local PostgreSQL/Redis Compose
-services, and a GitLab CI pipeline.
+services, a React TypeScript Admin Console under `frontend/`, and a GitLab CI
+pipeline.
 
-The backend Admin API surface is being completed and hardened for a future
-React Admin Console. Current management APIs cover tenants, users, profiles,
-custom user attributes, groups, roles, permissions, OAuth2 clients, MFA
-enrollment operations, and audit log queries with paginated list responses,
-practical validation, safer default profile handling, consistent validation
-errors, and safe response DTOs that avoid exposing password hashes, TOTP secret
-material, and client secret hashes.
+The Admin API surface is completed and hardened for frontend consumption.
+Current management APIs cover tenants, users, profiles, custom user attributes,
+groups, roles, permissions, OAuth2 clients, MFA enrollment operations, and audit
+log queries with paginated list responses, practical validation, safer default
+profile handling, consistent validation errors, and safe response DTOs that
+avoid exposing password hashes, TOTP secret material, and client secret hashes.
+The Admin Console demonstrates those APIs through real backend calls and a
+development bearer-token panel.
 
 The project has performed a pre-release Flyway schema reset toward a stronger
 identity model. The current baseline includes tenant status, richer user
@@ -93,6 +97,7 @@ Required tools:
 - JDK 21
 - Docker or a Docker-compatible runtime
 - Git
+- Node.js 20+ and npm for the Admin Console
 
 Start local dependencies:
 
@@ -110,6 +115,30 @@ Health check:
 
 ```bash
 curl http://localhost:8080/api/health
+```
+
+Run the Admin Console:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The frontend defaults to
+`http://localhost:8080` for backend calls. Override it with
+`VITE_API_BASE_URL` or with the API base URL field in the console header.
+
+Paste a development OAuth2 access token with `iam.read` and/or `iam.write`
+scopes into the token panel. The token is stored in local storage for local
+development only. Do not paste passwords, client secrets, refresh tokens, or
+other long-lived production credentials.
+
+Build the frontend:
+
+```bash
+cd frontend
+npm run build
 ```
 
 Stop local dependencies:

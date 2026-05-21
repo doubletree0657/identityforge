@@ -80,6 +80,7 @@ public class AuthorizationServerConfiguration {
                         .defaultAccessDeniedHandlerFor(
                                 new BearerTokenAccessDeniedHandler(),
                                 apiEndpointsMatcher))
+                .cors(Customizer.withDefaults())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
                 .csrf(csrf -> csrf.ignoringRequestMatchers(apiEndpointsMatcher));
 
