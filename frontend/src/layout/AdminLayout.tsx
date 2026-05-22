@@ -12,9 +12,11 @@ import {
   Users,
 } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { Button } from '../components/Button';
 import { Select } from '../components/Form';
+import { logout } from '../api/auth';
+import { useAuth } from '../context/AuthContext';
 import { useTenantContext } from '../context/TenantContext';
-import { TokenPanel } from './TokenPanel';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -31,6 +33,7 @@ const navItems = [
 ];
 
 export function AdminLayout() {
+  const { user } = useAuth();
   const { tenants, selectedTenantId, selectedTenant, setSelectedTenantId, isLoading } = useTenantContext();
 
   return (
@@ -67,7 +70,7 @@ export function AdminLayout() {
             <div>
               <div className="text-sm font-semibold text-ink">Admin Console v1</div>
               <div className="text-xs text-slate-500">
-                {selectedTenant ? `Tenant context: ${selectedTenant.name} (${selectedTenant.slug})` : 'Select a tenant to enable guided workflows'}
+                {user ? `Signed in as ${user.displayName || user.username}` : 'Signed in'}
               </div>
             </div>
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
@@ -87,7 +90,7 @@ export function AdminLayout() {
                   ))}
                 </Select>
               </label>
-              <TokenPanel />
+              <Button variant="secondary" onClick={logout}>Logout</Button>
             </div>
           </div>
         </header>

@@ -1,6 +1,7 @@
 package io.github.doubletree.iam.platform.repository;
 
 import io.github.doubletree.iam.platform.domain.Role;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +16,9 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
 
     @EntityGraph(attributePaths = {"permissions"})
     Page<Role> findByTenantId(UUID tenantId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"permissions"})
+    Optional<Role> findByTenantIdAndName(UUID tenantId, String name);
 
     @Override
     @EntityGraph(attributePaths = {"permissions"})

@@ -71,6 +71,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
         GroupController.class,
         MfaController.class,
         AuditLogController.class,
+        CurrentUserController.class,
         ScimController.class,
         RestExceptionHandler.class
 })
@@ -124,6 +125,35 @@ class CoreIamControllerTests {
 
     private final RequestPostProcessor readScopeJwt = jwt()
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
+
+    @Test
+    void currentUserRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/me"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void currentUserReturnsSafePrincipalInformation() throws Exception {
+        mockMvc.perform(get("/api/me")
+                        .with(jwt().jwt(token -> token
+                                        .subject("admin")
+                                        .claim("user_id", USER_ID.toString())
+                                        .claim("tenant_id", TENANT_ID.toString())
+                                        .claim("display_name", "Development Super Admin")
+                                        .claim("roles", List.of("platform-admin"))
+                                        .claim("scope", "iam.read iam.write"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subject").value("admin"))
+                .andExpect(jsonPath("$.username").value("admin"))
+                .andExpect(jsonPath("$.userId").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.displayName").value("Development Super Admin"))
+                .andExpect(jsonPath("$.roles[0]").value("platform-admin"))
+                .andExpect(jsonPath("$.scopes").isArray())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.clientSecretHash").doesNotExist());
+    }
 
     @Test
     void createsTenant() throws Exception {

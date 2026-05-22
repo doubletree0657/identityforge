@@ -131,24 +131,25 @@ npm run dev
 
 Open `http://localhost:5173`. The frontend defaults to
 `http://localhost:8080` for backend calls. Override it with
-`VITE_API_BASE_URL` or with the API base URL field in the console header.
+`VITE_API_BASE_URL` for local development.
 
 With the `dev` Spring profile active, the backend creates local-only bootstrap
-data: tenant `development` and OAuth2 client `international-iam-dev` with
-secret `secret`. Get a development token:
+data for browser-based Admin Console login:
 
-```bash
-curl -u international-iam-dev:secret -X POST http://localhost:8080/oauth2/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials" \
-  -d "scope=iam.read iam.write"
-```
+1. Start the backend with the dev profile.
+2. Start the frontend.
+3. Open `http://localhost:5173`.
+4. Click `Sign in with International IAM`.
+5. Sign in with username `admin` and password `admin123456`.
+6. Use the Admin Console.
 
-Paste the returned access token into the Admin Console token panel. The token
-is stored in local storage for local development only. Do not paste passwords,
-client secrets, refresh tokens, or other long-lived production credentials.
-The dev bootstrap data is only created by the `dev` profile and must not be
-used as production initialization.
+The default admin credentials are dev-only and are configured only in
+`application-dev.yml`. Production must not use fixed bootstrap credentials. The
+React Admin Console uses OAuth2 Authorization Code + PKCE with the persisted
+public client `iam-admin-console`; browser authentication stays on the backend
+owned `/login`, `/login/mfa`, and `/oauth2/consent` pages. The frontend stores
+the local development access token and expiry in browser storage and attaches
+the bearer token automatically to Admin API calls.
 
 The Admin Console is organized around relationship-aware IAM workflows:
 
@@ -202,6 +203,8 @@ under `/scim/v2/**` require OAuth2 JWT scopes:
 
 - Read operations require `iam.read`.
 - Write operations require `iam.write`.
+- The Admin Console also checks `/api/me` for an admin role such as
+  `platform-admin` before rendering management screens.
 
 ## OAuth2 Authorization Code Demo
 

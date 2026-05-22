@@ -27,6 +27,8 @@ public class PlatformUserDetailsService implements UserDetailsService {
         if (users.size() != 1) {
             throw new UsernameNotFoundException(GENERIC_AUTHENTICATION_FAILURE);
         }
-        return PlatformUserDetails.from(users.getFirst());
+        User user = users.getFirst();
+        return PlatformUserDetails.from(userRepository.findByTenantIdAndUsername(user.getTenant().getId(), username)
+                .orElse(user));
     }
 }

@@ -4,4 +4,13 @@
 # The dev bootstrap creates:
 # - tenant slug: development
 # - OAuth2 client: international-iam-dev / secret
+# - OAuth2 public client: iam-admin-console
+# - admin user: admin / admin123456
 # These values are for local development only and must not be used in production.
+app:
+  bootstrap:
+    admin:
+      enabled: true
+      username: admin
+      password: admin123456
+      reset-password: false

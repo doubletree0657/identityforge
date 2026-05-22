@@ -35,7 +35,8 @@ The codebase currently includes:
 - Repository-backed Spring Authorization Server `RegisteredClientRepository`
   integration for persisted OAuth2 client registrations.
 - Dev-profile bootstrap data for local Admin Console testing with a persisted
-  development tenant and OAuth2 client.
+  development tenant, dev-only super admin, admin role/permissions, and OAuth2
+  clients.
 - Productized OAuth2 authorization-code flow using local users, account status
   checks, optional TOTP challenge, persisted confidential clients, project-owned
   consent, JWT token issuance, and scope-protected API access.
@@ -46,7 +47,8 @@ The codebase currently includes:
 - Dockerfile, local PostgreSQL/Redis Compose services, and GitLab CI stages for
   test, package, and Docker image build.
 - React TypeScript Admin Console under `frontend/` with real Admin API
-  integration, development bearer-token configuration, resource management
+  integration, OAuth2 Authorization Code + PKCE login through the backend,
+  resource management
   screens, global tenant context, relationship-aware user-role, group-member,
   role-permission, OAuth2 client, MFA, audit log workflows, an IAM workflow demo
   page, and an OAuth2 authorization-code demo helper.
@@ -225,12 +227,15 @@ Completed slices:
   audit log review.
 - OAuth2 authorization-code demo helper with generated authorization URL and
   token exchange guidance.
-- Local development token workflow backed by dev-only OAuth2 client bootstrap.
+- First-class local Admin Console login backed by dev-only bootstrap admin
+  credentials, the public `iam-admin-console` PKCE client, and `/api/me`.
 - Frontend build verification through `npm run build`.
 
 Candidate slices:
 
 - Production authentication and session model.
+- Backend-enforced role/permission authorization beyond the current `/api/me`
+  Admin Console guard and JWT role claims.
 - Designed login, consent, and MFA challenge screens.
 - UI-level automated tests and richer interaction coverage.
 

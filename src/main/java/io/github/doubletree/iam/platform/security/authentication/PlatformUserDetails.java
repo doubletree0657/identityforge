@@ -4,8 +4,11 @@ import io.github.doubletree.iam.platform.domain.AccountStatus;
 import io.github.doubletree.iam.platform.domain.PasswordCredential;
 import io.github.doubletree.iam.platform.domain.User;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
@@ -13,18 +16,31 @@ public record PlatformUserDetails(
         UUID userId,
         UUID tenantId,
         String username,
+        String displayName,
         String password,  
-        AccountStatus accountStatus)
+        AccountStatus accountStatus,
+        Set<String> roles,
+        Set<String> permissions)
         implements UserDetails {
 
     public static PlatformUserDetails from(User user) {
         PasswordCredential credential = user.getPasswordCredential();
+        Set<String> roles = user.getRoles().stream()
+                .map(role -> role.getName())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> permissions = user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .map(permission -> permission.getName())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         return new PlatformUserDetails(
                 user.getId(),
                 user.getTenant().getId(),
                 user.getUsername(),
+                user.getDisplayName(),
                 credential == null ? null : credential.getPasswordHash(),
-                user.getAccountStatus());
+                user.getAccountStatus(),
+                roles,
+                permissions);
     }
 
     @Override

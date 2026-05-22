@@ -31,10 +31,13 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationConsentService;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationException;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationToken;
+import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
+import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
 import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
@@ -68,6 +71,7 @@ public class AuthorizationServerConfiguration {
         http
                 .securityMatcher(authorizationServerEndpointsMatcher)
                 .with(authorizationServerConfigurer, authorizationServer -> authorizationServer
+                        .oidc(Customizer.withDefaults())
                         .authorizationEndpoint(authorizationEndpoint -> authorizationEndpoint
                                 .consentPage("/oauth2/consent")
                                 .authorizationResponseHandler((request, response, authentication) -> {
@@ -82,6 +86,7 @@ public class AuthorizationServerConfiguration {
                 .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
                         new LoginUrlAuthenticationEntryPoint("/login"),
                         new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
+                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.ignoringRequestMatchers(authorizationServerEndpointsMatcher));
 
         return http.build();
@@ -253,6 +258,22 @@ public class AuthorizationServerConfiguration {
     @Bean
     AuthorizationServerSettings authorizationServerSettings() {
         return AuthorizationServerSettings.builder().build();
+    }
+
+    @Bean
+    OAuth2TokenCustomizer<JwtEncodingContext> jwtTokenCustomizer() {
+        return context -> {
+            if (!OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType())
+                    || !(context.getPrincipal().getPrincipal() instanceof PlatformUserDetails userDetails)) {
+                return;
+            }
+            context.getClaims()
+                    .claim("user_id", userDetails.userId().toString())
+                    .claim("tenant_id", userDetails.tenantId().toString())
+                    .claim("display_name", userDetails.displayName())
+                    .claim("roles", userDetails.roles())
+                    .claim("permissions", userDetails.permissions());
+        };
     }
 
     private RSAKey generateLocalDevelopmentRsaKey() {
