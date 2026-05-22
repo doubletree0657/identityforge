@@ -9,8 +9,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.containsString;
 
 import io.github.doubletree.iam.platform.application.exception.ClientValidationException;
 import io.github.doubletree.iam.platform.application.exception.PasswordValidationException;
@@ -31,6 +34,7 @@ import io.github.doubletree.iam.platform.application.service.UserApplicationServ
 import io.github.doubletree.iam.platform.domain.AuditActorType;
 import io.github.doubletree.iam.platform.domain.AuditLog;
 import io.github.doubletree.iam.platform.domain.AuditResult;
+import io.github.doubletree.iam.platform.domain.AccountStatus;
 import io.github.doubletree.iam.platform.domain.Client;
 import io.github.doubletree.iam.platform.domain.ClientStatus;
 import io.github.doubletree.iam.platform.domain.ClientType;
@@ -46,7 +50,9 @@ import io.github.doubletree.iam.platform.domain.UserAttributeValueType;
 import io.github.doubletree.iam.platform.domain.UserProfile;
 import io.github.doubletree.iam.platform.security.PasswordEncodingConfiguration;
 import io.github.doubletree.iam.platform.security.authentication.MfaAuthenticationSuccessHandler;
+import io.github.doubletree.iam.platform.security.authentication.PlatformUserDetails;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -153,6 +159,29 @@ class CoreIamControllerTests {
                 .andExpect(jsonPath("$.scopes").isArray())
                 .andExpect(jsonPath("$.passwordHash").doesNotExist())
                 .andExpect(jsonPath("$.clientSecretHash").doesNotExist());
+    }
+
+    @Test
+    void browserLogoutInvalidatesSessionAuditsAndRedirectsToFrontendLogin() throws Exception {
+        PlatformUserDetails principal = new PlatformUserDetails(
+                USER_ID,
+                TENANT_ID,
+                "admin",
+                "Development Super Admin",
+                "{noop}not-exposed",
+                AccountStatus.ACTIVE,
+                Set.of("platform-admin"),
+                Set.of("iam.users.read"));
+
+        mockMvc.perform(get("/logout").with(
+                        org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .user(principal)))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("http://localhost:5173/login?loggedOut=true"))
+                .andExpect(header().string("Set-Cookie", containsString("JSESSIONID=;")))
+                .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
+
+        verify(auditApplicationService).recordEvent(TENANT_ID, "USER_LOGGED_OUT", "USER", USER_ID);
     }
 
     @Test
@@ -932,7 +961,7 @@ class CoreIamControllerTests {
     @Test
     void queriesAuditLogsWithoutSecretFields() throws Exception {
         when(auditApplicationService.listAuditLogs(eq(TENANT_ID), eq("USER_PASSWORD_SET"), eq("USER"),
-                eq(USER_ID), any(Pageable.class)))
+                eq(USER_ID), eq(AuditResult.SUCCESS), any(Pageable.class)))
                 .thenReturn(pageOf(auditLog()));
 
         mockMvc.perform(get("/api/audit-logs")
@@ -940,6 +969,7 @@ class CoreIamControllerTests {
                         .queryParam("action", "USER_PASSWORD_SET")
                         .queryParam("resourceType", "USER")
                         .queryParam("resourceId", USER_ID.toString())
+                        .queryParam("result", "SUCCESS")
                         .with(readScopeJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].id").value(AUDIT_ID.toString()))

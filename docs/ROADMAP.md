@@ -48,10 +48,11 @@ The codebase currently includes:
   test, package, and Docker image build.
 - React TypeScript Admin Console under `frontend/` with real Admin API
   integration, OAuth2 Authorization Code + PKCE login through the backend,
-  resource management
-  screens, global tenant context, relationship-aware user-role, group-member,
-  role-permission, OAuth2 client, MFA, audit log workflows, an IAM workflow demo
-  page, and an OAuth2 authorization-code demo helper.
+  productized resource management screens, global tenant context with
+  auto-selection for single-tenant local development, relationship-aware
+  user-role, group-member, role-permission, OAuth2 client, MFA, audit log
+  workflows, an IAM workflow demo page, and an OAuth2 authorization-code demo
+  helper.
 
 The browser login and consent experience is now demonstrable for local IAM
 flows. It is still not a full production session product and should be hardened
@@ -221,7 +222,14 @@ Completed slices:
   user audit events.
 - OAuth2 client workflow guidance for confidential versus public clients,
   authorization code versus client credentials grants, redirect URIs, scopes,
-  PKCE, one-time secret display, and confidential-client secret rotation.
+  PKCE, one-time secret display, confidential-client secret rotation, and
+  reusable client templates for SPAs, backend services, and web apps.
+- Productized user, group, role, permission, client, MFA, and audit workflows
+  that avoid normal UUID copy/paste by using the selected tenant and
+  tenant-scoped selectors.
+- Documented IAM relationship model in the Admin Console: users belong to one
+  tenant, groups are optional and many-to-many with users, roles are currently
+  assigned directly to users, and permissions attach to roles.
 - Guided IAM Workflow page that links the local demo chain from tenant
   selection through user, password, permission, role, group, OAuth2 client, and
   audit log review.
@@ -236,6 +244,9 @@ Candidate slices:
 - Production authentication and session model.
 - Backend-enforced role/permission authorization beyond the current `/api/me`
   Admin Console guard and JWT role claims.
+- Role-to-group assignment and richer group-derived authorization.
+- Safe delete/archive workflows where domain ownership and cascade behavior are
+  explicitly designed.
 - Designed login, consent, and MFA challenge screens.
 - UI-level automated tests and richer interaction coverage.
 

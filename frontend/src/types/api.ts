@@ -156,4 +156,5 @@ export interface QueryParams {
   action?: string;
   resourceType?: string;
   resourceId?: string;
+  result?: AuditResult;
 }

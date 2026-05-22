@@ -38,6 +38,16 @@ export function IamWorkflowPage() {
             <p className="text-sm text-slate-600">Select a tenant in the header before walking through tenant-scoped user, role, group, client, and audit workflows.</p>
           )}
         </Card>
+        <Card title="Relationship model">
+          <div className="grid gap-2 text-sm text-slate-700">
+            <p>A user always belongs to exactly one tenant.</p>
+            <p>Groups are optional organizational containers; a user can be in zero, one, or many groups.</p>
+            <p>Roles are assigned directly to users in this version. Role-to-group assignment remains future work.</p>
+            <p>Permissions attach to roles, and OAuth2 clients belong to the selected tenant.</p>
+          </div>
+        </Card>
+      </div>
+      <div className="mt-4">
         <Card title="Demo walkthrough">
           <div className="grid gap-3">
             {steps.map((step, index) => (
@@ -58,4 +68,3 @@ export function IamWorkflowPage() {
     </>
   );
 }
-

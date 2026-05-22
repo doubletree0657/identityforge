@@ -7,6 +7,7 @@ import { Field, Input } from '../components/Form';
 import { Pagination } from '../components/Pagination';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
+import { TenantRequired } from '../components/TenantRequired';
 import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
@@ -34,6 +35,7 @@ export function PermissionsPage() {
   return (
     <>
       <PageHeader title="Permissions" description="Create named capabilities that can be attached to roles." />
+      {!selectedTenantId && <TenantRequired label="Permissions are tenant scoped and become useful when attached to roles." />}
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
         <Card title="Create permission">
           {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant in the header before creating permissions.</p>}

@@ -45,11 +45,13 @@ public class AuditApplicationService {
             String action,
             String resourceType,
             UUID resourceId,
+            io.github.doubletree.iam.platform.domain.AuditResult result,
             Pageable pageable) {
         Specification<AuditLog> specification = Specification.where(equalUuid("tenantId", tenantId))
                 .and(equalString("action", action))
                 .and(equalString("resourceType", resourceType))
-                .and(equalUuid("resourceId", resourceId));
+                .and(equalUuid("resourceId", resourceId))
+                .and(equalEnum("result", result));
         return auditLogRepository.findAll(specification, pageable);
     }
 
@@ -61,5 +63,9 @@ public class AuditApplicationService {
         return value == null || value.isBlank()
                 ? null
                 : (root, query, builder) -> builder.equal(root.get(fieldName), value);
+    }
+
+    private <E extends Enum<E>> Specification<AuditLog> equalEnum(String fieldName, E value) {
+        return value == null ? null : (root, query, builder) -> builder.equal(root.get(fieldName), value);
     }
 }

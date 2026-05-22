@@ -65,6 +65,20 @@ export function UserDetailPage() {
     mutationFn: (roleId: string) => adminApi.users.removeRole(userId, roleId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user', userId] }),
   });
+  const addToGroup = useMutation({
+    mutationFn: (groupId: string) => adminApi.groups.addMember(groupId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups-for-user-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
+  const removeFromGroup = useMutation({
+    mutationFn: (groupId: string) => adminApi.groups.removeMember(groupId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups-for-user-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
   const enrollTotp = useMutation({
     mutationFn: () => adminApi.mfa.enrollTotp(userId),
     onSuccess: (result) => setTotpSecret(result.secret),
@@ -134,10 +148,21 @@ export function UserDetailPage() {
   const assignedRoles = roles.data?.items.filter((role) => user.data.roleIds.includes(role.id)) ?? [];
   const availableRoles = roles.data?.items.filter((role) => !user.data.roleIds.includes(role.id)) ?? [];
   const memberships = groups.data?.items.filter((group) => group.memberIds.includes(user.data.id)) ?? [];
+  const availableGroups = groups.data?.items.filter((group) => !group.memberIds.includes(user.data.id)) ?? [];
 
   return (
     <>
-      <PageHeader title={user.data.displayName} description={`User ${user.data.username} in tenant ${user.data.tenantId}`} />
+      <PageHeader
+        title={user.data.displayName}
+        description="Users belong to one tenant, may belong to multiple optional groups, and can receive roles directly."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'ACTIVE' })}>Activate</Button>
+            <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'DISABLED' })}>Disable</Button>
+            <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'LOCKED' })}>Lock</Button>
+          </div>
+        }
+      />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card title="Identity">
           <form onSubmit={onUpdateUser} className="grid gap-3 md:grid-cols-2">
@@ -214,6 +239,7 @@ export function UserDetailPage() {
         <Card title="Group memberships">
           {groups.isLoading && <LoadingState label="Loading groups" />}
           {groups.isError && <ErrorState error={groups.error} />}
+          <p className="mb-3 text-sm text-slate-600">Groups are optional organizational containers. This user can belong to multiple groups or none.</p>
           {!groups.isLoading && memberships.length === 0 && <p className="text-sm text-slate-500">This user is not a member of any groups in this tenant.</p>}
           {memberships.length > 0 && (
             <DataTable
@@ -221,9 +247,24 @@ export function UserDetailPage() {
               columns={[
                 { header: 'Group', render: (group) => <span className="font-medium">{group.displayName || group.name}</span> },
                 { header: 'Description', render: (group) => group.description || '-' },
+                { header: 'Action', render: (group) => <Button variant="danger" onClick={() => removeFromGroup.mutate(group.id)}>Remove</Button> },
               ]}
             />
           )}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              addToGroup.mutate(String(new FormData(event.currentTarget).get('groupId') ?? ''));
+            }}
+            className="mt-4 flex gap-2"
+          >
+            <Select name="groupId" className="flex-1">
+              <option value="">Select group</option>
+              {availableGroups.map((group) => <option key={group.id} value={group.id}>{group.displayName || group.name}</option>)}
+            </Select>
+            <Button type="submit" variant="secondary">Add to group</Button>
+          </form>
+          {(addToGroup.isError || removeFromGroup.isError) && <div className="mt-3"><ErrorState error={addToGroup.error ?? removeFromGroup.error} /></div>}
         </Card>
         <Card title="Attributes">
           <form onSubmit={onAttribute} className="mb-4 grid gap-2 md:grid-cols-[1fr_1fr_140px_auto]">

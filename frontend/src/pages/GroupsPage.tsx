@@ -1,12 +1,14 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { adminApi } from '../api/adminApi';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { Field, Input, Select } from '../components/Form';
+import { Field, Input } from '../components/Form';
 import { Pagination } from '../components/Pagination';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
+import { TenantRequired } from '../components/TenantRequired';
 import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
@@ -31,14 +33,6 @@ export function GroupsPage() {
       queryClient.invalidateQueries({ queryKey: ['users-for-groups'] });
     },
   });
-  const addMember = useMutation({
-    mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) => adminApi.groups.addMember(groupId, userId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
-  });
-  const removeMember = useMutation({
-    mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) => adminApi.groups.removeMember(groupId, userId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
-  });
 
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,6 +49,7 @@ export function GroupsPage() {
   return (
     <>
       <PageHeader title="Groups" description="Manage tenant-scoped identity collections and memberships." />
+      {!selectedTenantId && <TenantRequired label="Groups are optional tenant containers. Select a tenant before creating or managing memberships." />}
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
         <Card title="Create group">
           {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant in the header before creating groups.</p>}
@@ -76,10 +71,12 @@ export function GroupsPage() {
               <DataTable
                 items={groups.data.items}
                 columns={[
-                  { header: 'Name', render: (group) => <span className="font-medium">{group.displayName || group.name}</span> },
-                  { header: 'Tenant', render: (group) => <span className="font-mono text-xs">{group.tenantId}</span> },
+                  { header: 'Group', render: (group) => <Link className="font-medium text-brand hover:underline" to={`/groups/${group.id}`}>{group.displayName || group.name}</Link> },
+                  { header: 'Name', render: (group) => group.name },
+                  { header: 'Description', render: (group) => group.description || '-' },
+                  { header: 'Members', render: (group) => `${group.memberIds.length} member${group.memberIds.length === 1 ? '' : 's'}` },
                   {
-                    header: 'Members',
+                    header: 'Preview',
                     render: (group) => (
                       <div className="flex max-w-[360px] flex-wrap gap-1">
                         {group.memberIds.length === 0 && <span className="text-sm text-slate-500">No members</span>}
@@ -94,47 +91,12 @@ export function GroupsPage() {
                       </div>
                     ),
                   },
-                  {
-                    header: 'Membership',
-                    render: (group) => (
-                      <form
-                        className="grid min-w-[260px] gap-2"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          addMember.mutate({ groupId: group.id, userId: String(new FormData(event.currentTarget).get('userId') ?? '') });
-                        }}
-                      >
-                        <Select name="userId">
-                          <option value="">Select tenant user</option>
-                          {users.data?.items.map((user) => (
-                            <option key={user.id} value={user.id}>
-                              {user.displayName} ({user.username})
-                            </option>
-                          ))}
-                        </Select>
-                        <div className="flex gap-2">
-                          <Button type="submit" variant="secondary">Add</Button>
-                          <Button
-                            type="button"
-                            variant="danger"
-                            onClick={(event) => {
-                              const form = event.currentTarget.closest('form');
-                              const userId = String(new FormData(form!).get('userId') ?? '');
-                              removeMember.mutate({ groupId: group.id, userId });
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      </form>
-                    ),
-                  },
+                  { header: 'Action', render: (group) => <Link className="text-sm font-medium text-brand hover:underline" to={`/groups/${group.id}`}>Manage members</Link> },
                 ]}
               />
               <Pagination page={groups.data} onPageChange={setPage} />
             </>
           )}
-          {(addMember.isError || removeMember.isError) && <div className="mt-3"><ErrorState error={addMember.error ?? removeMember.error} /></div>}
         </Card>
       </div>
     </>

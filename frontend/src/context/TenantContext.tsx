@@ -30,8 +30,13 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     if (selectedTenantId && tenants.data && !selectedTenant) {
       setSelectedTenantIdState('');
       localStorage.removeItem(TENANT_STORAGE_KEY);
+      return;
     }
-  }, [selectedTenantId, selectedTenant, tenants.data]);
+    if (!selectedTenantId && tenantItems.length === 1) {
+      setSelectedTenantIdState(tenantItems[0].id);
+      localStorage.setItem(TENANT_STORAGE_KEY, tenantItems[0].id);
+    }
+  }, [selectedTenantId, selectedTenant, tenantItems, tenants.data]);
 
   const value = useMemo<TenantContextValue>(() => ({
     tenants: tenantItems,
@@ -59,4 +64,3 @@ export function useTenantContext() {
   }
   return context;
 }
-

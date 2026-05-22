@@ -7,6 +7,7 @@ import { Card } from '../components/Card';
 import { Field, Input, Select } from '../components/Form';
 import { SecretNotice } from '../components/SecretNotice';
 import { ErrorState } from '../components/State';
+import { TenantRequired } from '../components/TenantRequired';
 import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
@@ -31,6 +32,7 @@ export function MfaPage() {
   return (
     <>
       <PageHeader title="MFA" description="Admin TOTP enrollment operations. This does not add MFA to login." />
+      {!selectedTenantId && <TenantRequired label="Select a tenant to choose users for MFA operations." />}
       <Card title="TOTP operations">
         <div className="grid max-w-2xl gap-4">
           {!selectedTenantId && <p className="text-sm text-slate-600">Select a tenant in the header to choose a user for MFA actions.</p>}

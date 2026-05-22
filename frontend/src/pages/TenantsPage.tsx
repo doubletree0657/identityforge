@@ -22,12 +22,18 @@ export function TenantsPage() {
   });
   const createTenant = useMutation({
     mutationFn: adminApi.tenants.create,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenants'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-context-tenants'] });
+    },
   });
   const updateTenant = useMutation({
     mutationFn: ({ id, body }: { id: string; body: { name?: string; slug?: string; status?: TenantStatus } }) =>
       adminApi.tenants.update(id, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenants'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-context-tenants'] });
+    },
   });
 
   function create(event: FormEvent<HTMLFormElement>) {
@@ -52,7 +58,7 @@ export function TenantsPage() {
 
   return (
     <>
-      <PageHeader title="Tenants" description="Manage tenant boundaries and lifecycle status." />
+      <PageHeader title="Tenants" description="Manage tenant boundaries and lifecycle status. This console uses status-based lifecycle actions instead of risky cascade deletion." />
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
         <Card title="Create tenant">
           <form onSubmit={create} className="grid gap-3">
@@ -88,7 +94,11 @@ export function TenantsPage() {
                           <option value="SUSPENDED">SUSPENDED</option>
                           <option value="ARCHIVED">ARCHIVED</option>
                         </Select>
-                        <Button type="submit" variant="secondary" disabled={updateTenant.isPending}>Save</Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="submit" variant="secondary" disabled={updateTenant.isPending}>Save</Button>
+                          <Button type="button" variant="secondary" onClick={() => updateTenant.mutate({ id: tenant.id, body: { status: 'ACTIVE' } })}>Reactivate</Button>
+                          <Button type="button" variant="danger" onClick={() => updateTenant.mutate({ id: tenant.id, body: { status: 'SUSPENDED' } })}>Suspend</Button>
+                        </div>
                       </form>
                     ),
                   },

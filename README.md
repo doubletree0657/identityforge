@@ -149,19 +149,30 @@ React Admin Console uses OAuth2 Authorization Code + PKCE with the persisted
 public client `iam-admin-console`; browser authentication stays on the backend
 owned `/login`, `/login/mfa`, and `/oauth2/consent` pages. The frontend stores
 the local development access token and expiry in browser storage and attaches
-the bearer token automatically to Admin API calls.
+the bearer token automatically to Admin API calls. The local Admin Console
+logout clears frontend token state, calls backend `GET /logout` to invalidate
+the browser session, and returns to `http://localhost:5173/login?loggedOut=true`.
+Production deployments should prefer a CSRF-protected POST logout and a hardened
+browser session model.
 
 The Admin Console is organized around relationship-aware IAM workflows:
 
-- Select a current tenant once in the console header.
-- Create users, groups, roles, permissions, and OAuth2 clients in that tenant.
-- Assign roles to users and permissions to roles using tenant-scoped selectors.
-- Add users to groups using a tenant user selector.
+- Select a current tenant once in the console header; if only one tenant exists,
+  the console selects it automatically.
+- Create users, groups, roles, permissions, and OAuth2 clients in the selected
+  tenant without copying tenant UUIDs.
+- A user belongs to one tenant, does not have to belong to a group, and can
+  belong to many groups. Groups are optional organizational containers.
+- Assign roles directly to users and permissions to roles using tenant-scoped
+  selectors. Role-to-group assignment is future work.
+- Add and remove group members from the group detail page using tenant user
+  selectors.
 - Manage user identity, profile, custom attributes, password, TOTP actions, and
   related audit events from the user detail page.
-- Use the OAuth2 client workflow defaults for confidential versus public
-  clients, authorization code versus client credentials grants, redirect URIs,
-  scopes, and PKCE.
+- Use OAuth2 client templates for public PKCE SPAs, confidential backend
+  service clients, and confidential web apps. Client secrets are shown only once
+  on create or rotation; `clientSecretHash` is never exposed.
+- Filter audit logs by tenant, action, resource type, resource id, and result.
 - Open the `IAM Workflow` page for a guided demo chain from tenant selection
   through audit log review.
 

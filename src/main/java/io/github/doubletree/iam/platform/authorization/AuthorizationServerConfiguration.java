@@ -17,6 +17,7 @@ import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -47,7 +48,9 @@ import org.springframework.security.web.DefaultRedirectStrategy;
 import org.springframework.security.web.RedirectStrategy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.logout.CookieClearingLogoutHandler;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
+import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
@@ -97,7 +100,9 @@ public class AuthorizationServerConfiguration {
     SecurityFilterChain applicationSecurityFilterChain(
             HttpSecurity http,
             MfaAuthenticationSuccessHandler mfaAuthenticationSuccessHandler,
-            AuditApplicationService auditApplicationService) throws Exception {
+            AuditApplicationService auditApplicationService,
+            @Value("${app.admin-console.frontend-base-url:http://localhost:5173}") String adminConsoleFrontendBaseUrl)
+            throws Exception {
         RequestMatcher apiEndpointsMatcher = new OrRequestMatcher(
                 AntPathRequestMatcher.antMatcher("/api/**"),
                 AntPathRequestMatcher.antMatcher("/scim/v2/**"));
@@ -105,7 +110,7 @@ public class AuthorizationServerConfiguration {
         http
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/health").permitAll()
-                        .requestMatchers("/login", "/login/mfa", "/logout-success").permitAll()
+                        .requestMatchers("/login", "/login/mfa", "/logout").permitAll()
                         .requestMatchers("/oauth2/consent").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/**").hasAuthority("SCOPE_iam.write")
                         .requestMatchers(HttpMethod.PUT, "/api/**").hasAuthority("SCOPE_iam.write")
@@ -120,7 +125,13 @@ public class AuthorizationServerConfiguration {
                         .failureUrl("/login?error")
                         .successHandler(mfaAuthenticationSuccessHandler)
                         .permitAll())
-                .logout(logout -> logout.logoutSuccessHandler(logoutSuccessHandler(auditApplicationService)))
+                .logout(logout -> logout
+                        .logoutRequestMatcher(AntPathRequestMatcher.antMatcher(HttpMethod.GET, "/logout"))
+                        .addLogoutHandler(new SecurityContextLogoutHandler())
+                        .addLogoutHandler(new CookieClearingLogoutHandler("JSESSIONID"))
+                        .invalidateHttpSession(true)
+                        .clearAuthentication(true)
+                        .logoutSuccessHandler(logoutSuccessHandler(auditApplicationService, adminConsoleFrontendBaseUrl)))
                 .exceptionHandling(exceptions -> exceptions
                         .defaultAuthenticationEntryPointFor(
                                 new BearerTokenAuthenticationEntryPoint(),
@@ -135,14 +146,25 @@ public class AuthorizationServerConfiguration {
         return http.build();
     }
 
-    private LogoutSuccessHandler logoutSuccessHandler(AuditApplicationService auditApplicationService) {
+    private LogoutSuccessHandler logoutSuccessHandler(
+            AuditApplicationService auditApplicationService,
+            String adminConsoleFrontendBaseUrl) {
         return (request, response, authentication) -> {
             if (authentication != null && authentication.getPrincipal() instanceof PlatformUserDetails userDetails) {
                 auditApplicationService.recordEvent(
                         userDetails.tenantId(), "USER_LOGGED_OUT", "USER", userDetails.userId());
             }
-            response.sendRedirect("/login?logout");
+            response.sendRedirect(frontendLogoutRedirectUri(adminConsoleFrontendBaseUrl));
         };
+    }
+
+    private String frontendLogoutRedirectUri(String adminConsoleFrontendBaseUrl) {
+        return UriComponentsBuilder.fromUriString(adminConsoleFrontendBaseUrl)
+                .replacePath("/login")
+                .replaceQuery(null)
+                .queryParam("loggedOut", "true")
+                .build()
+                .toUriString();
     }
 
     private void auditConsent(

@@ -7,6 +7,7 @@ import { Field, Input, Select } from '../components/Form';
 import { Pagination } from '../components/Pagination';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
+import { TenantRequired } from '../components/TenantRequired';
 import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
@@ -47,6 +48,7 @@ export function RolesPage() {
   return (
     <>
       <PageHeader title="Roles" description="Create roles and attach tenant-scoped permissions." />
+      {!selectedTenantId && <TenantRequired label="Roles are tenant scoped. Select a tenant to create roles and assign permissions." />}
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
         <Card title="Create role">
           {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant in the header before creating roles.</p>}
@@ -103,27 +105,6 @@ export function RolesPage() {
                           {permissions.data?.items.map((permission) => <option key={permission.id} value={permission.id}>{permission.name}</option>)}
                         </Select>
                         <Button type="submit" variant="secondary">Assign</Button>
-                      </form>
-                    ),
-                  },
-                  {
-                    header: 'Remove permission',
-                    render: (role) => (
-                      <form
-                        className="flex min-w-[260px] gap-2"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          removePermission.mutate({ roleId: role.id, permissionId: String(new FormData(event.currentTarget).get('permissionId') ?? '') });
-                        }}
-                      >
-                        <Select name="permissionId" className="flex-1">
-                          <option value="">Select permission</option>
-                          {role.permissionIds.map((permissionId) => {
-                            const permission = permissions.data?.items.find((item) => item.id === permissionId);
-                            return <option key={permissionId} value={permissionId}>{permission?.name ?? permissionId}</option>;
-                          })}
-                        </Select>
-                        <Button type="submit" variant="danger">Remove</Button>
                       </form>
                     ),
                   },

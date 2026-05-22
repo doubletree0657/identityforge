@@ -7,6 +7,7 @@ import { AuditLogsPage } from '../pages/AuditLogsPage';
 import { ClientsPage } from '../pages/ClientsPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { GroupsPage } from '../pages/GroupsPage';
+import { GroupDetailPage } from '../pages/GroupDetailPage';
 import { IamWorkflowPage } from '../pages/IamWorkflowPage';
 import { LoginPage } from '../pages/LoginPage';
 import { MfaPage } from '../pages/MfaPage';
@@ -30,6 +31,7 @@ export const routes: RouteObject[] = [
       { path: '/users', element: <UsersPage /> },
       { path: '/users/:userId', element: <UserDetailPage /> },
       { path: '/groups', element: <GroupsPage /> },
+      { path: '/groups/:groupId', element: <GroupDetailPage /> },
       { path: '/roles', element: <RolesPage /> },
       { path: '/permissions', element: <PermissionsPage /> },
       { path: '/clients', element: <ClientsPage /> },

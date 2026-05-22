@@ -1,11 +1,13 @@
 import { LogIn } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { startOAuthLogin } from '../api/auth';
 
 export function LoginPage() {
   const location = useLocation();
+  const [params] = useSearchParams();
   const expired = Boolean((location.state as { expired?: boolean } | null)?.expired);
+  const loggedOut = params.get('loggedOut') === 'true';
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f5f7fb] px-4">
@@ -13,7 +15,11 @@ export function LoginPage() {
         <div className="text-sm font-semibold text-brand">International IAM Platform</div>
         <h1 className="mt-2 text-2xl font-semibold text-ink">Admin Console</h1>
         <p className="mt-2 text-sm text-slate-600">
-          {expired ? 'Your session has expired. Sign in again to continue.' : 'Sign in through the backend authorization server.'}
+          {loggedOut
+            ? 'You have been signed out.'
+            : expired
+              ? 'Your session has expired. Sign in again to continue.'
+              : 'Sign in through the backend authorization server.'}
         </p>
         <Button className="mt-6 w-full" icon={<LogIn className="h-4 w-4" />} onClick={() => void startOAuthLogin()}>
           Sign in with International IAM

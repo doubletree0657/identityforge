@@ -1,6 +1,7 @@
 package io.github.doubletree.iam.platform.web;
 
 import io.github.doubletree.iam.platform.application.service.AuditApplicationService;
+import io.github.doubletree.iam.platform.domain.AuditResult;
 import io.github.doubletree.iam.platform.web.dto.AuditLogResponse;
 import io.github.doubletree.iam.platform.web.dto.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,6 +33,7 @@ public class AuditLogController {
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String resourceType,
             @RequestParam(required = false) UUID resourceId,
+            @RequestParam(required = false) AuditResult result,
             @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_PAGE) int page,
             @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_SIZE) int size) {
         return PageResponse.from(
@@ -40,6 +42,7 @@ public class AuditLogController {
                         action,
                         resourceType,
                         resourceId,
+                        result,
                         SafePageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))),
                 AuditLogResponse::from);
     }

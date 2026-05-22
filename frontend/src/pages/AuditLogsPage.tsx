@@ -4,11 +4,12 @@ import { useSearchParams } from 'react-router-dom';
 import { adminApi } from '../api/adminApi';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
-import { Field, Input } from '../components/Form';
+import { Field, Input, Select } from '../components/Form';
 import { Pagination } from '../components/Pagination';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { useTenantContext } from '../context/TenantContext';
+import { AuditResult } from '../types/api';
 import { formatDate } from '../utils/format';
 import { PageHeader } from './PageHeader';
 
@@ -20,10 +21,19 @@ export function AuditLogsPage() {
     action: searchParams.get('action') ?? '',
     resourceType: searchParams.get('resourceType') ?? '',
     resourceId: searchParams.get('resourceId') ?? '',
+    result: (searchParams.get('result') ?? '') as AuditResult | '',
   });
   const auditLogs = useQuery({
     queryKey: ['audit-logs', page, selectedTenantId, filters],
-    queryFn: () => adminApi.auditLogs.list({ page, size: 20, tenantId: selectedTenantId, ...filters }),
+    queryFn: () => adminApi.auditLogs.list({
+      page,
+      size: 20,
+      tenantId: selectedTenantId,
+      action: filters.action,
+      resourceType: filters.resourceType,
+      resourceId: filters.resourceId,
+      result: filters.result || undefined,
+    }),
     enabled: !!selectedTenantId,
   });
 
@@ -32,7 +42,7 @@ export function AuditLogsPage() {
       <PageHeader title="Audit Logs" description="Query administrative and security events without exposing sensitive values." />
       <Card title="Filters">
         {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant to load audit events for tenant-scoped exploration.</p>}
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <Field label="tenant">
             <Input value={selectedTenant?.name ?? 'No tenant selected'} disabled />
           </Field>
@@ -47,6 +57,19 @@ export function AuditLogsPage() {
               />
             </Field>
           ))}
+          <Field label="result">
+            <Select
+              value={filters.result}
+              onChange={(event) => {
+                setFilters((current) => ({ ...current, result: event.target.value as AuditResult | '' }));
+                setPage(0);
+              }}
+            >
+              <option value="">Any result</option>
+              <option value="SUCCESS">SUCCESS</option>
+              <option value="FAILURE">FAILURE</option>
+            </Select>
+          </Field>
         </div>
       </Card>
       <div className="mt-4">

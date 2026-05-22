@@ -39,8 +39,6 @@ export async function startOAuthLogin() {
 export async function completeOAuthLogin(code: string, state: string) {
   const expectedState = sessionStorage.getItem(STATE_KEY);
   const codeVerifier = sessionStorage.getItem(CODE_VERIFIER_KEY);
-  sessionStorage.removeItem(STATE_KEY);
-  sessionStorage.removeItem(CODE_VERIFIER_KEY);
   if (!expectedState || !codeVerifier || expectedState !== state) {
     throw new Error('The login response could not be verified. Start sign-in again.');
   }
@@ -58,6 +56,12 @@ export async function completeOAuthLogin(code: string, state: string) {
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
   );
   setAuthToken(response.data.access_token, response.data.expires_in);
+  clearOAuthLoginAttempt();
+}
+
+export function clearOAuthLoginAttempt() {
+  sessionStorage.removeItem(STATE_KEY);
+  sessionStorage.removeItem(CODE_VERIFIER_KEY);
 }
 
 export function getCurrentUser() {
