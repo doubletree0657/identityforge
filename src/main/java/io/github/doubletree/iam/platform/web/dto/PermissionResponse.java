@@ -6,7 +6,6 @@ import java.util.UUID;
 
 public record PermissionResponse(
         UUID id,
-        UUID tenantId,
         String name,
         String displayName,
         String description,
@@ -18,7 +17,6 @@ public record PermissionResponse(
     public static PermissionResponse from(Permission permission) {
         return new PermissionResponse(
                 permission.getId(),
-                permission.getTenant() == null ? null : permission.getTenant().getId(),
                 permission.getName(),
                 permission.getDisplayName(),
                 permission.getDescription(),

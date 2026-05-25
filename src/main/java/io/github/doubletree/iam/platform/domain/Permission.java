@@ -2,12 +2,9 @@ package io.github.doubletree.iam.platform.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -37,10 +34,6 @@ public class Permission {
     @Column(nullable = false)
     private boolean systemManaged;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tenant_id")
-    private Tenant tenant;
-
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -50,27 +43,20 @@ public class Permission {
     protected Permission() {
     }
 
-    public static Permission create(Tenant tenant, String name) {
+    public static Permission create(String name) {
         Permission permission = new Permission();
-        permission.setTenant(tenant);
         permission.setName(name);
         permission.setDisplayName(name);
         permission.setCategory("Custom");
         return permission;
     }
 
-    public static Permission system(Tenant tenant, String name, String displayName, String description, String category) {
-        Permission permission = create(tenant, name);
+    public static Permission system(String name, String displayName, String description, String category) {
+        Permission permission = create(name);
         permission.setDisplayName(displayName);
         permission.setDescription(description);
         permission.setCategory(category);
         permission.setSystemManaged(true);
-        return permission;
-    }
-
-    public static Permission system(String name, String displayName, String description, String category) {
-        Permission permission = system(null, name, displayName, description, category);
-        permission.setTenant(null);
         return permission;
     }
 
@@ -125,14 +111,6 @@ public class Permission {
 
     public void setSystemManaged(boolean systemManaged) {
         this.systemManaged = systemManaged;
-    }
-
-    public Tenant getTenant() {
-        return tenant;
-    }
-
-    public void setTenant(Tenant tenant) {
-        this.tenant = tenant;
     }
 
     public Instant getCreatedAt() {

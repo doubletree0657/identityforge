@@ -150,8 +150,6 @@ class DevelopmentDataBootstrapTests {
         assertThat(role.getPermissions()).hasSize(15);
         assertThat(permissionRepository.findBySystemManagedTrue(org.springframework.data.domain.Pageable.unpaged())
                 .getContent()).hasSize(15);
-        assertThat(permissionRepository.findByTenantId(tenant.getId(), org.springframework.data.domain.Pageable.unpaged())
-                .getContent()).isEmpty();
         assertThat(userRepository.findByUsername("admin")).hasSize(1);
         assertThat(clientRepository.findAllByClientId(DevelopmentDataBootstrap.ADMIN_CONSOLE_CLIENT_ID)).hasSize(1);
     }

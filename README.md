@@ -53,9 +53,8 @@ profile handling, consistent validation errors, and safe response DTOs that
 avoid exposing password hashes, TOTP secret material, and client secret hashes.
 The Admin Console demonstrates those APIs through real backend calls and a
 development bearer-token panel. It now has a global tenant selector that is
-used by tenant-scoped screens for users, groups, roles, permissions, OAuth2
-clients, MFA operations, and audit logs, so normal demo workflows no longer
-require copying tenant UUIDs between pages.
+used by tenant-scoped screens for users, groups, roles, OAuth2 clients, MFA
+operations, and audit logs, while permissions remain a global catalog.
 
 The project has performed a pre-release Flyway schema reset toward a stronger
 identity model. The current baseline includes tenant status, richer user
@@ -159,12 +158,12 @@ The Admin Console is organized around relationship-aware IAM workflows:
 
 - Select a current tenant once in the console header; if only one tenant exists,
   the console selects it automatically.
-- Create users, groups, roles, permissions, and OAuth2 clients in the selected
-  tenant without copying tenant UUIDs.
+- Create users, groups, roles, and OAuth2 clients in the selected tenant
+  without copying tenant UUIDs.
 - A user belongs to one tenant, does not have to belong to a group, and can
   belong to many groups. Groups are optional organizational containers.
-- Assign roles directly to users, assign roles to groups, and attach
-  system-defined IAM permissions to roles using tenant-scoped selectors.
+- Assign roles directly to users, assign roles to groups, and attach global
+  system IAM permissions to tenant roles from the permission catalog.
 - Review direct roles, group-derived roles, effective roles, and effective
   permissions on the user detail page.
 - Add and remove group members from the group detail page using tenant user
@@ -254,8 +253,9 @@ reference the global catalog immediately: `platform-admin` receives all
 built-in permissions, `tenant-admin` receives tenant-scoped management
 permissions, and `auditor` receives read-only permissions. Reserved `iam.*`
 permissions cannot be created manually through the API. Future custom
-application permissions should belong to a tenant plus an application/resource
-server and remain separate from IAM Admin API permissions. Random database
+application permissions should be modeled separately as tenant plus
+application/resource-server capabilities and remain separate from IAM Admin API
+permissions. Random database
 permission strings do not grant Admin API access unless they are part of the
 recognized built-in catalog.
 

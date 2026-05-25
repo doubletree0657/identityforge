@@ -97,7 +97,8 @@ Remaining candidate slices:
 
 - Account lifecycle states and transitions.
 - Credential ownership, password metadata, and policy hooks.
-- Tenant-aware user, group, role, permission, and client relationships.
+- Tenant-aware user, group, role, and client relationships, with IAM
+  permissions kept as a global system catalog.
 - Clear distinction between platform administration concepts and OAuth2 client
   registration concepts.
 - Tests for tenant boundaries and security-sensitive invariants.
@@ -215,11 +216,11 @@ Completed slices:
 - Tenant, user, user detail, profile, attribute, group, role, permission,
   OAuth2 client, MFA, and audit log management screens.
 - Global tenant selector stored in local storage and used as the default context
-  for tenant-scoped users, groups, roles, permissions, OAuth2 clients, MFA
-  actions, and audit logs.
+  for tenant-scoped users, groups, roles, OAuth2 clients, MFA actions, and audit
+  logs. The permission catalog is global.
 - Relationship-aware IAM workflows: user role assignment, user group membership
   visibility, group member add/remove with tenant user selectors, role
-  permission assignment/removal with tenant permission selectors, and related
+  permission assignment/removal from the global permission catalog, and related
   user audit events.
 - OAuth2 client workflow guidance for confidential versus public clients,
   authorization code versus client credentials grants, redirect URIs, scopes,
@@ -229,8 +230,9 @@ Completed slices:
   that avoid normal UUID copy/paste by using the selected tenant and
   tenant-scoped selectors.
 - Documented IAM relationship model in the Admin Console: users belong to one
-  tenant, groups are optional and many-to-many with users, roles are currently
-  assigned directly to users, and permissions attach to roles.
+  tenant, groups are optional and many-to-many with users, roles are
+  tenant-scoped permission bundles, and permissions are global atomic
+  capabilities attached to roles.
 - Guided IAM Workflow page that links the local demo chain from tenant
   selection through user, password, permission, role, group, OAuth2 client, and
   audit log review.
@@ -264,7 +266,8 @@ Candidate slices:
 - Machine-admin authorization for service clients that need non-SCIM Admin API
   access.
 - Custom external application permission management outside the reserved IAM
-  namespace, modeled as tenant plus application/resource-server capabilities.
+  namespace, modeled separately as tenant plus application/resource-server
+  capabilities.
 - Full policy engine design.
 - Safe delete/archive workflows where domain ownership and cascade behavior are
   explicitly designed.

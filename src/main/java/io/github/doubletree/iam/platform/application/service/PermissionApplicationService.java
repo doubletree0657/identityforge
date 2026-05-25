@@ -3,10 +3,7 @@ package io.github.doubletree.iam.platform.application.service;
 import io.github.doubletree.iam.platform.application.exception.EntityNotFoundException;
 import io.github.doubletree.iam.platform.application.exception.ValidationException;
 import io.github.doubletree.iam.platform.domain.Permission;
-import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.repository.PermissionRepository;
-import io.github.doubletree.iam.platform.repository.TenantRepository;
-import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import io.github.doubletree.iam.platform.security.BuiltInPermission;
 import java.util.Locale;
 import java.util.UUID;
@@ -19,49 +16,36 @@ import org.springframework.transaction.annotation.Transactional;
 public class PermissionApplicationService {
 
     private final PermissionRepository permissionRepository;
-    private final TenantRepository tenantRepository;
     private final AuditApplicationService auditApplicationService;
-    private final AdminAuthorizationService adminAuthorizationService;
     private final SystemPermissionCatalogService systemPermissionCatalogService;
 
     public PermissionApplicationService(
             PermissionRepository permissionRepository,
-            TenantRepository tenantRepository,
             AuditApplicationService auditApplicationService,
-            AdminAuthorizationService adminAuthorizationService,
             SystemPermissionCatalogService systemPermissionCatalogService) {
         this.permissionRepository = permissionRepository;
-        this.tenantRepository = tenantRepository;
         this.auditApplicationService = auditApplicationService;
-        this.adminAuthorizationService = adminAuthorizationService;
         this.systemPermissionCatalogService = systemPermissionCatalogService;
     }
 
     @Transactional
-    public Permission createPermission(UUID tenantId, String name) {
-        Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new EntityNotFoundException("Tenant not found: " + tenantId));
-        adminAuthorizationService.assertTenantAccess(tenant.getId());
+    public Permission createPermission(String name) {
         validateCustomPermissionName(name);
 
-        Permission permission = permissionRepository.save(Permission.create(tenant, name));
-        auditApplicationService.recordEvent(tenant.getId(), "PERMISSION_CREATED", "PERMISSION", permission.getId());
+        Permission permission = permissionRepository.save(Permission.create(name));
+        auditApplicationService.recordEvent(null, "PERMISSION_CREATED", "PERMISSION", permission.getId());
         return permission;
     }
 
     @Transactional(readOnly = true)
-    public Page<Permission> listPermissions(UUID tenantId, Pageable pageable) {
+    public Page<Permission> listPermissions(Pageable pageable) {
         return permissionRepository.findBySystemManagedTrue(pageable);
     }
 
     @Transactional(readOnly = true)
     public Permission findPermission(UUID permissionId) {
-        Permission permission = permissionRepository.findById(permissionId)
+        return permissionRepository.findById(permissionId)
                 .orElseThrow(() -> new EntityNotFoundException("Permission not found: " + permissionId));
-        if (permission.getTenant() != null) {
-            adminAuthorizationService.assertTenantAccess(permission.getTenant().getId());
-        }
-        return permission;
     }
 
     @Transactional

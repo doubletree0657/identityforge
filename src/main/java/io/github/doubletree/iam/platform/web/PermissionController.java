@@ -36,17 +36,16 @@ public class PermissionController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create permission", description = "Requires iam.write scope.")
     public PermissionResponse createPermission(@Valid @RequestBody CreatePermissionRequest request) {
-        Permission permission = permissionApplicationService.createPermission(request.tenantId(), request.name());
+        Permission permission = permissionApplicationService.createPermission(request.name());
         return PermissionResponse.from(permission);
     }
 
     @GetMapping
     @Operation(summary = "List permissions", description = "Requires iam.read scope.")
     public PageResponse<PermissionResponse> listPermissions(
-            @RequestParam(required = false) UUID tenantId,
             @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_PAGE) int page,
             @RequestParam(defaultValue = "" + SafePageRequest.DEFAULT_SIZE) int size) {
-        return PageResponse.from(permissionApplicationService.listPermissions(tenantId, SafePageRequest.of(page, size)), PermissionResponse::from);
+        return PageResponse.from(permissionApplicationService.listPermissions(SafePageRequest.of(page, size)), PermissionResponse::from);
     }
 
     @GetMapping("/{permissionId}")

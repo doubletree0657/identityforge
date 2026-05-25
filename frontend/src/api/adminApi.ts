@@ -96,7 +96,7 @@ export const adminApi = {
     list: (params?: QueryParams) =>
       apiRequest<PageResponse<PermissionResponse>>('GET', '/api/permissions', undefined, cleanParams(params)),
     get: (id: string) => apiRequest<PermissionResponse>('GET', `/api/permissions/${id}`),
-    create: (body: { tenantId: string; name: string }) => apiRequest<PermissionResponse>('POST', '/api/permissions', body),
+    create: (body: { name: string }) => apiRequest<PermissionResponse>('POST', '/api/permissions', body),
   },
   clients: {
     list: (params?: QueryParams) => apiRequest<PageResponse<ClientResponse>>('GET', '/api/clients', undefined, cleanParams(params)),

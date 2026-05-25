@@ -242,7 +242,7 @@ class DomainPersistenceTests {
     @Test
     void roleCanHavePermissions() {
         Tenant tenant = tenantRepository.save(tenant("Role Permission Tenant"));
-        Permission permission = permissionRepository.save(permission(tenant, "clients:read"));
+        Permission permission = permissionRepository.save(permission("clients:read"));
         Role role = role(tenant, "auditor");
         role.getPermissions().add(permission);
         Role savedRole = roleRepository.save(role);
@@ -302,9 +302,8 @@ class DomainPersistenceTests {
         return role;
     }
 
-    private Permission permission(Tenant tenant, String name) {
+    private Permission permission(String name) {
         Permission permission = new Permission();
-        permission.setTenant(tenant);
         permission.setName(name);
         return permission;
     }

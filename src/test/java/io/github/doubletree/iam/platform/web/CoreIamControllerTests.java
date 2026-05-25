@@ -442,7 +442,7 @@ class CoreIamControllerTests {
 
     @Test
     void createsPermission() throws Exception {
-        when(permissionApplicationService.createPermission(eq(TENANT_ID), eq("clients:read")))
+        when(permissionApplicationService.createPermission(eq("clients:read")))
                 .thenReturn(permission("clients:read"));
 
         mockMvc.perform(post("/api/permissions")
@@ -450,13 +450,12 @@ class CoreIamControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "tenantId":"00000000-0000-0000-0000-000000000001",
                                   "name":"clients:read"
                                 }
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(PERMISSION_ID.toString()))
-                .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.tenantId").doesNotExist())
                 .andExpect(jsonPath("$.name").value("clients:read"));
     }
 
@@ -667,16 +666,17 @@ class CoreIamControllerTests {
     void listsRolesAndPermissions() throws Exception {
         when(roleApplicationService.listRoles(eq(TENANT_ID), any(Pageable.class)))
                 .thenReturn(pageOf(role("admin")));
-        when(permissionApplicationService.listPermissions(eq(TENANT_ID), any(Pageable.class)))
+        when(permissionApplicationService.listPermissions(any(Pageable.class)))
                 .thenReturn(pageOf(permission("users:read")));
 
         mockMvc.perform(get("/api/roles").queryParam("tenantId", TENANT_ID.toString()).with(readScopeJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].id").value(ROLE_ID.toString()))
                 .andExpect(jsonPath("$.totalElements").value(1));
-        mockMvc.perform(get("/api/permissions").queryParam("tenantId", TENANT_ID.toString()).with(readScopeJwt))
+        mockMvc.perform(get("/api/permissions").with(readScopeJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].id").value(PERMISSION_ID.toString()))
+                .andExpect(jsonPath("$.items[0].tenantId").doesNotExist())
                 .andExpect(jsonPath("$.totalElements").value(1));
     }
 
@@ -1116,7 +1116,7 @@ class CoreIamControllerTests {
     }
 
     private Permission permission(String name) {
-        Permission permission = Permission.create(tenant("Test Tenant"), name);
+        Permission permission = Permission.create(name);
         permission.setId(PERMISSION_ID);
         return permission;
     }

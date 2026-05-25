@@ -84,7 +84,6 @@ CREATE TABLE user_attributes (
 
 CREATE TABLE permissions (
     id UUID PRIMARY KEY,
-    tenant_id UUID,
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
     description TEXT,
@@ -92,8 +91,7 @@ CREATE TABLE permissions (
     system_managed BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_permissions_tenant_name UNIQUE (tenant_id, name),
-    CONSTRAINT fk_permissions_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+    CONSTRAINT uq_permissions_name UNIQUE (name)
 );
 
 CREATE UNIQUE INDEX uq_permissions_system_name
@@ -101,7 +99,6 @@ CREATE UNIQUE INDEX uq_permissions_system_name
     WHERE system_managed = TRUE;
 
 CREATE INDEX idx_permissions_system_managed ON permissions (system_managed);
-CREATE INDEX idx_permissions_tenant_id ON permissions (tenant_id);
 
 CREATE TABLE roles (
     id UUID PRIMARY KEY,

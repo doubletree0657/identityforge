@@ -9,11 +9,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface PermissionRepository extends JpaRepository<Permission, UUID> {
 
-    Page<Permission> findByTenantId(UUID tenantId, Pageable pageable);
-
-    Optional<Permission> findByTenantIdAndName(UUID tenantId, String name);
-
     Optional<Permission> findByNameAndSystemManagedTrue(String name);
+
+    Optional<Permission> findByName(String name);
 
     Page<Permission> findBySystemManagedTrue(Pageable pageable);
 }

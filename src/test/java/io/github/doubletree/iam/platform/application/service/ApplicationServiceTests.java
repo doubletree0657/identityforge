@@ -479,13 +479,14 @@ class ApplicationServiceTests {
 
     @Test
     void createsPermission() {
-        Tenant tenant = tenantApplicationService.createTenant("Permission Tenant");
-
-        Permission permission = permissionApplicationService.createPermission(tenant.getId(), "clients:read");
+        Permission permission = permissionApplicationService.createPermission("clients:read");
 
         Permission loadedPermission = permissionRepository.findById(permission.getId()).orElseThrow();
 
         assertThat(loadedPermission.getName()).isEqualTo("clients:read");
+        assertThat(Permission.class.getDeclaredFields())
+                .extracting("name")
+                .doesNotContain("tenant");
     }
 
     @Test
@@ -539,7 +540,7 @@ class ApplicationServiceTests {
     void assignsPermissionToRole() {
         Tenant tenant = tenantApplicationService.createTenant("Permission Assignment Tenant");
         Role role = roleApplicationService.createRole(tenant.getId(), "auditor");
-        Permission permission = permissionApplicationService.createPermission(tenant.getId(), "users:read");
+        Permission permission = permissionApplicationService.createPermission("users:read");
 
         roleApplicationService.assignPermissionToRole(role.getId(), permission.getId());
 
@@ -547,6 +548,23 @@ class ApplicationServiceTests {
         assertThat(loadedRole.getPermissions())
                 .extracting(Permission::getName)
                 .containsExactly("users:read");
+    }
+
+    @Test
+    void creatingTenantsReusesGlobalSystemPermissionsForRoleTemplates() {
+        Tenant firstTenant = tenantApplicationService.createTenant("First Permission Catalog Tenant");
+        Tenant secondTenant = tenantApplicationService.createTenant("Second Permission Catalog Tenant");
+
+        Role firstTenantAdmin = roleRepository.findByTenantIdAndName(
+                firstTenant.getId(), SystemPermissionCatalogService.TENANT_ADMIN_ROLE_NAME).orElseThrow();
+        Role secondTenantAdmin = roleRepository.findByTenantIdAndName(
+                secondTenant.getId(), SystemPermissionCatalogService.TENANT_ADMIN_ROLE_NAME).orElseThrow();
+
+        assertThat(permissionRepository.findBySystemManagedTrue(org.springframework.data.domain.Pageable.unpaged())
+                .getContent()).hasSize(15);
+        assertThat(firstTenantAdmin.getPermissions())
+                .extracting(Permission::getId)
+                .containsAll(secondTenantAdmin.getPermissions().stream().map(Permission::getId).toList());
     }
 
     @Test
@@ -799,10 +817,10 @@ class ApplicationServiceTests {
     }
 
     @Test
-    void permissionCreationRequiresTenantContext() {
+    void permissionCreationDoesNotRequireTenantContext() {
         assertThat(Permission.class.getDeclaredMethods())
                 .filteredOn(method -> method.getName().equals("create"))
-                .allSatisfy(method -> assertThat(method.getParameterTypes()).contains(Tenant.class));
+                .allSatisfy(method -> assertThat(method.getParameterTypes()).doesNotContain(Tenant.class));
     }
 
     @ParameterizedTest

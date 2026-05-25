@@ -31,13 +31,12 @@ public class SystemPermissionCatalogService {
     public Map<String, Permission> seedGlobalPermissions() {
         Map<String, Permission> permissions = new LinkedHashMap<>();
         for (BuiltInPermission builtInPermission : BuiltInPermission.values()) {
-            Permission permission = permissionRepository.findByNameAndSystemManagedTrue(builtInPermission.permissionName())
+            Permission permission = permissionRepository.findByName(builtInPermission.permissionName())
                     .orElseGet(() -> Permission.system(
                             builtInPermission.permissionName(),
                             builtInPermission.displayName(),
                             builtInPermission.description(),
                             builtInPermission.category()));
-            permission.setTenant(null);
             permission.setDisplayName(builtInPermission.displayName());
             permission.setDescription(builtInPermission.description());
             permission.setCategory(builtInPermission.category());

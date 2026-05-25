@@ -104,7 +104,6 @@ export interface RoleResponse {
 
 export interface PermissionResponse {
   id: string;
-  tenantId?: string;
   name: string;
   displayName: string;
   description?: string;
