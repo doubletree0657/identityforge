@@ -22,16 +22,19 @@ public class PermissionApplicationService {
     private final TenantRepository tenantRepository;
     private final AuditApplicationService auditApplicationService;
     private final AdminAuthorizationService adminAuthorizationService;
+    private final SystemPermissionCatalogService systemPermissionCatalogService;
 
     public PermissionApplicationService(
             PermissionRepository permissionRepository,
             TenantRepository tenantRepository,
             AuditApplicationService auditApplicationService,
-            AdminAuthorizationService adminAuthorizationService) {
+            AdminAuthorizationService adminAuthorizationService,
+            SystemPermissionCatalogService systemPermissionCatalogService) {
         this.permissionRepository = permissionRepository;
         this.tenantRepository = tenantRepository;
         this.auditApplicationService = auditApplicationService;
         this.adminAuthorizationService = adminAuthorizationService;
+        this.systemPermissionCatalogService = systemPermissionCatalogService;
     }
 
     @Transactional
@@ -48,37 +51,22 @@ public class PermissionApplicationService {
 
     @Transactional(readOnly = true)
     public Page<Permission> listPermissions(UUID tenantId, Pageable pageable) {
-        UUID allowedTenantId = adminAuthorizationService.tenantIdForList(tenantId);
-        if (allowedTenantId == null) {
-            return permissionRepository.findAll(pageable);
-        }
-        return permissionRepository.findByTenantId(allowedTenantId, pageable);
+        return permissionRepository.findBySystemManagedTrue(pageable);
     }
 
     @Transactional(readOnly = true)
     public Permission findPermission(UUID permissionId) {
         Permission permission = permissionRepository.findById(permissionId)
                 .orElseThrow(() -> new EntityNotFoundException("Permission not found: " + permissionId));
-        adminAuthorizationService.assertTenantAccess(permission.getTenant().getId());
+        if (permission.getTenant() != null) {
+            adminAuthorizationService.assertTenantAccess(permission.getTenant().getId());
+        }
         return permission;
     }
 
     @Transactional
-    public Permission seedBuiltInPermission(UUID tenantId, BuiltInPermission builtInPermission) {
-        Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new EntityNotFoundException("Tenant not found: " + tenantId));
-        Permission permission = permissionRepository.findByTenantIdAndName(tenantId, builtInPermission.permissionName())
-                .orElseGet(() -> Permission.system(
-                        tenant,
-                        builtInPermission.permissionName(),
-                        builtInPermission.displayName(),
-                        builtInPermission.description(),
-                        builtInPermission.category()));
-        permission.setDisplayName(builtInPermission.displayName());
-        permission.setDescription(builtInPermission.description());
-        permission.setCategory(builtInPermission.category());
-        permission.setSystemManaged(true);
-        return permissionRepository.save(permission);
+    public Permission seedBuiltInPermission(BuiltInPermission builtInPermission) {
+        return systemPermissionCatalogService.seedGlobalPermissions().get(builtInPermission.permissionName());
     }
 
     private void validateCustomPermissionName(String name) {

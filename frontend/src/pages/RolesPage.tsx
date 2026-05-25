@@ -21,9 +21,8 @@ export function RolesPage() {
     enabled: !!selectedTenantId,
   });
   const permissions = useQuery({
-    queryKey: ['permissions-for-roles', selectedTenantId],
-    queryFn: () => adminApi.permissions.list({ tenantId: selectedTenantId, size: 100 }),
-    enabled: !!selectedTenantId,
+    queryKey: ['permissions-for-roles'],
+    queryFn: () => adminApi.permissions.list({ size: 100 }),
   });
   const users = useQuery({
     queryKey: ['users-for-role-assignments', selectedTenantId],
@@ -93,7 +92,7 @@ export function RolesPage() {
                               onClick={() => removePermission.mutate({ roleId: role.id, permissionId })}
                               className="rounded-full border border-line bg-slate-50 px-2 py-1 text-xs text-slate-700"
                             >
-                              {permission?.displayName ?? permission?.name ?? permissionId} ×
+                              {permission ? `${permission.displayName || permission.name} (${permission.name})` : permissionId} ×
                             </button>
                           );
                         })}
@@ -122,7 +121,7 @@ export function RolesPage() {
                           <option value="">Select permission</option>
                           {permissions.data?.items.map((permission) => (
                             <option key={permission.id} value={permission.id}>
-                              {permission.displayName || permission.name}
+                              {permission.displayName || permission.name} ({permission.name})
                             </option>
                           ))}
                         </Select>

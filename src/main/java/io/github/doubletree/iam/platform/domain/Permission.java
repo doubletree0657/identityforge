@@ -37,8 +37,8 @@ public class Permission {
     @Column(nullable = false)
     private boolean systemManaged;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "tenant_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id")
     private Tenant tenant;
 
     @Column(nullable = false, updatable = false)
@@ -65,6 +65,12 @@ public class Permission {
         permission.setDescription(description);
         permission.setCategory(category);
         permission.setSystemManaged(true);
+        return permission;
+    }
+
+    public static Permission system(String name, String displayName, String description, String category) {
+        Permission permission = system(null, name, displayName, description, category);
+        permission.setTenant(null);
         return permission;
     }
 

@@ -83,9 +83,12 @@ public class RoleApplicationService {
         Permission permission = permissionRepository.findById(permissionId)
                 .orElseThrow(() -> new EntityNotFoundException("Permission not found: " + permissionId));
 
-        adminAuthorizationService.assertSameTenant(
-                role.getTenant().getId(), permission.getTenant().getId(),
-                "Role and permission must belong to the same tenant");
+        adminAuthorizationService.assertTenantAccess(role.getTenant().getId());
+        if (!permission.isSystemManaged()) {
+            adminAuthorizationService.assertSameTenant(
+                    role.getTenant().getId(), permission.getTenant().getId(),
+                    "Role and permission must belong to the same tenant");
+        }
 
         role.getPermissions().add(permission);
         Role savedRole = roleRepository.save(role);
@@ -101,9 +104,12 @@ public class RoleApplicationService {
         Permission permission = permissionRepository.findById(permissionId)
                 .orElseThrow(() -> new EntityNotFoundException("Permission not found: " + permissionId));
 
-        adminAuthorizationService.assertSameTenant(
-                role.getTenant().getId(), permission.getTenant().getId(),
-                "Role and permission must belong to the same tenant");
+        adminAuthorizationService.assertTenantAccess(role.getTenant().getId());
+        if (!permission.isSystemManaged()) {
+            adminAuthorizationService.assertSameTenant(
+                    role.getTenant().getId(), permission.getTenant().getId(),
+                    "Role and permission must belong to the same tenant");
+        }
 
         boolean removed = role.getPermissions().remove(permission);
         Role savedRole = roleRepository.save(role);

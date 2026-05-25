@@ -18,7 +18,7 @@ public record PermissionResponse(
     public static PermissionResponse from(Permission permission) {
         return new PermissionResponse(
                 permission.getId(),
-                permission.getTenant().getId(),
+                permission.getTenant() == null ? null : permission.getTenant().getId(),
                 permission.getName(),
                 permission.getDisplayName(),
                 permission.getDescription(),

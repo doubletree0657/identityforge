@@ -19,14 +19,17 @@ public class TenantApplicationService {
     private final TenantRepository tenantRepository;
     private final AuditApplicationService auditApplicationService;
     private final AdminAuthorizationService adminAuthorizationService;
+    private final SystemPermissionCatalogService systemPermissionCatalogService;
 
     public TenantApplicationService(
             TenantRepository tenantRepository,
             AuditApplicationService auditApplicationService,
-            AdminAuthorizationService adminAuthorizationService) {
+            AdminAuthorizationService adminAuthorizationService,
+            SystemPermissionCatalogService systemPermissionCatalogService) {
         this.tenantRepository = tenantRepository;
         this.auditApplicationService = auditApplicationService;
         this.adminAuthorizationService = adminAuthorizationService;
+        this.systemPermissionCatalogService = systemPermissionCatalogService;
     }
 
     @Transactional
@@ -39,6 +42,7 @@ public class TenantApplicationService {
         Tenant candidate = Tenant.create(name);
         candidate.setSlug(slug);
         Tenant tenant = tenantRepository.save(candidate);
+        systemPermissionCatalogService.seedRoleTemplates(tenant);
         auditApplicationService.recordEvent(tenant.getId(), "TENANT_CREATED", "TENANT", tenant.getId());
         return tenant;
     }

@@ -4,7 +4,6 @@ import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
-import { TenantRequired } from '../components/TenantRequired';
 import { useTenantContext } from '../context/TenantContext';
 import { PermissionResponse } from '../types/api';
 import { PageHeader } from './PageHeader';
@@ -12,9 +11,8 @@ import { PageHeader } from './PageHeader';
 export function PermissionsPage() {
   const { selectedTenantId } = useTenantContext();
   const permissions = useQuery({
-    queryKey: ['permissions-catalog', selectedTenantId],
-    queryFn: () => adminApi.permissions.list({ size: 100, tenantId: selectedTenantId }),
-    enabled: !!selectedTenantId,
+    queryKey: ['permissions-catalog'],
+    queryFn: () => adminApi.permissions.list({ size: 100 }),
   });
   const roles = useQuery({
     queryKey: ['roles-for-permission-catalog', selectedTenantId],
@@ -27,10 +25,9 @@ export function PermissionsPage() {
   return (
     <>
       <PageHeader title="Permission Catalog" description="System IAM permissions are seeded by the backend and assigned to roles from this catalog." />
-      {!selectedTenantId && <TenantRequired label="Select a tenant to view its seeded IAM permission catalog." />}
       {!selectedTenantId && (
         <Card title="Catalog">
-          <p className="text-sm text-slate-600">Permissions are tenant-scoped records, but IAM permission names are system-defined.</p>
+          <p className="text-sm text-slate-600">The IAM permission catalog is global. Select a tenant to see which tenant roles use each permission.</p>
         </Card>
       )}
       {permissions.isLoading && <LoadingState />}
@@ -59,6 +56,9 @@ export function PermissionsPage() {
                   {
                     header: 'Used by roles',
                     render: (permission) => {
+                      if (!selectedTenantId) {
+                        return <span className="text-sm text-slate-500">Select tenant</span>;
+                      }
                       const roleNames = roles.data?.items
                         .filter((role) => role.permissionIds.includes(permission.id))
                         .map((role) => role.name) ?? [];

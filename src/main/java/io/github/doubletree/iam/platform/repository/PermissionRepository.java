@@ -12,4 +12,8 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
     Page<Permission> findByTenantId(UUID tenantId, Pageable pageable);
 
     Optional<Permission> findByTenantIdAndName(UUID tenantId, String name);
+
+    Optional<Permission> findByNameAndSystemManagedTrue(String name);
+
+    Page<Permission> findBySystemManagedTrue(Pageable pageable);
 }

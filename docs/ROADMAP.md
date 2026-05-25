@@ -245,10 +245,12 @@ Completed slices:
   claims, `/api/me`, and the Admin Console.
 - Group-to-role assignment APIs and UI, with tenant-boundary checks for
   user/group, user/role, and group/role relationships.
-- System IAM permission catalog seeded by the backend, including display
+- Global system IAM permission catalog seeded by the backend, including display
   metadata, reserved `iam.*` protection, and Admin API checks aligned to the
   same built-in permission names.
-- Built-in role templates for `platform-admin`, `tenant-admin`, and `auditor`.
+- Tenant-scoped role templates for `platform-admin`, `tenant-admin`, and
+  `auditor` that reference global permissions instead of duplicating
+  permissions per tenant.
 - Clearer user lifecycle controls for `PENDING`, `ACTIVE`, `DISABLED`, and
   `LOCKED`, plus status-change audit events.
 - TOTP enrollment UX with one-time setup secret display, `otpauth://` URI, and
@@ -261,7 +263,7 @@ Candidate slices:
 - Machine-admin authorization for service clients that need non-SCIM Admin API
   access.
 - Custom external application permission management outside the reserved IAM
-  namespace.
+  namespace, modeled as tenant plus application/resource-server capabilities.
 - Full policy engine design.
 - Safe delete/archive workflows where domain ownership and cascade behavior are
   explicitly designed.

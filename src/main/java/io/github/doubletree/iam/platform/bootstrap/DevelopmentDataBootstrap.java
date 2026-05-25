@@ -3,19 +3,16 @@ package io.github.doubletree.iam.platform.bootstrap;
 import io.github.doubletree.iam.platform.domain.Client;
 import io.github.doubletree.iam.platform.domain.ClientStatus;
 import io.github.doubletree.iam.platform.domain.ClientType;
-import io.github.doubletree.iam.platform.domain.Permission;
 import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
+import io.github.doubletree.iam.platform.application.service.SystemPermissionCatalogService;
 import io.github.doubletree.iam.platform.application.service.UserApplicationService;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
-import io.github.doubletree.iam.platform.repository.PermissionRepository;
 import io.github.doubletree.iam.platform.repository.RoleRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
-import io.github.doubletree.iam.platform.security.BuiltInPermission;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -35,9 +32,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     static final String DEVELOPMENT_CLIENT_NAME = "International IAM Dev Client";
     static final String ADMIN_CONSOLE_CLIENT_ID = "iam-admin-console";
     static final String ADMIN_CONSOLE_CLIENT_NAME = "IAM Admin Console";
-    static final String ADMIN_ROLE_NAME = "platform-admin";
-    static final String TENANT_ADMIN_ROLE_NAME = "tenant-admin";
-    static final String AUDITOR_ROLE_NAME = "auditor";
+    static final String ADMIN_ROLE_NAME = SystemPermissionCatalogService.PLATFORM_ADMIN_ROLE_NAME;
     static final String ADMIN_DISPLAY_NAME = "Development Super Admin";
     private static final String DEVELOPMENT_CLIENT_SECRET = "secret";
 
@@ -55,7 +50,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     private final ClientRepository clientRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
-    private final PermissionRepository permissionRepository;
+    private final SystemPermissionCatalogService systemPermissionCatalogService;
     private final UserApplicationService userApplicationService;
     private final PasswordEncoder passwordEncoder;
     private final boolean adminBootstrapEnabled;
@@ -68,7 +63,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
             ClientRepository clientRepository,
             UserRepository userRepository,
             RoleRepository roleRepository,
-            PermissionRepository permissionRepository,
+            SystemPermissionCatalogService systemPermissionCatalogService,
             UserApplicationService userApplicationService,
             PasswordEncoder passwordEncoder,
             @Value("${app.bootstrap.admin.enabled:false}") boolean adminBootstrapEnabled,
@@ -79,7 +74,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
         this.clientRepository = clientRepository;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
-        this.permissionRepository = permissionRepository;
+        this.systemPermissionCatalogService = systemPermissionCatalogService;
         this.userApplicationService = userApplicationService;
         this.passwordEncoder = passwordEncoder;
         this.adminBootstrapEnabled = adminBootstrapEnabled;
@@ -109,7 +104,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
                     .ifPresent(this::refreshDevelopmentClient);
         }
         initializeAdminConsoleClient(tenant);
-        initializeBuiltInPermissionsAndRoles(tenant);
+        systemPermissionCatalogService.seedRoleTemplates(tenant);
         if (adminBootstrapEnabled) {
             initializeAdminUser(tenant);
         }
@@ -186,38 +181,4 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
         }
     }
 
-    private void initializeBuiltInPermissionsAndRoles(Tenant tenant) {
-        Map<String, Permission> permissions = new java.util.LinkedHashMap<>();
-        for (BuiltInPermission builtInPermission : BuiltInPermission.values()) {
-            Permission permission = permissionRepository.findByTenantIdAndName(
-                            tenant.getId(), builtInPermission.permissionName())
-                    .orElseGet(() -> Permission.system(
-                            tenant,
-                            builtInPermission.permissionName(),
-                            builtInPermission.displayName(),
-                            builtInPermission.description(),
-                            builtInPermission.category()));
-            permission.setDisplayName(builtInPermission.displayName());
-            permission.setDescription(builtInPermission.description());
-            permission.setCategory(builtInPermission.category());
-            permission.setSystemManaged(true);
-            permissions.put(builtInPermission.permissionName(), permissionRepository.save(permission));
-        }
-        initializeRoleTemplate(tenant, ADMIN_ROLE_NAME, BuiltInPermission.platformAdminNames(), permissions);
-        initializeRoleTemplate(tenant, TENANT_ADMIN_ROLE_NAME, BuiltInPermission.tenantAdminNames(), permissions);
-        initializeRoleTemplate(tenant, AUDITOR_ROLE_NAME, BuiltInPermission.auditorNames(), permissions);
-    }
-
-    private void initializeRoleTemplate(
-            Tenant tenant,
-            String roleName,
-            Set<String> permissionNames,
-            Map<String, Permission> permissions) {
-        Role role = roleRepository.findByTenantIdAndName(tenant.getId(), roleName)
-                .orElseGet(() -> roleRepository.save(Role.create(tenant, roleName)));
-        permissionNames.stream()
-                .map(permissions::get)
-                .forEach(role.getPermissions()::add);
-        roleRepository.save(role);
-    }
 }

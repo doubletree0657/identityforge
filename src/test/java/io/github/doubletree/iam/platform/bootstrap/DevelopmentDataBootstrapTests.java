@@ -143,9 +143,11 @@ class DevelopmentDataBootstrapTests {
         assertThat(passwordEncoder.matches("admin123456", admin.getPasswordCredential().getPasswordHash())).isTrue();
         assertThat(admin.getRoles()).extracting(Role::getName)
                 .containsExactly(DevelopmentDataBootstrap.ADMIN_ROLE_NAME);
-        assertThat(role.getPermissions()).hasSize(11);
+        assertThat(role.getPermissions()).hasSize(15);
+        assertThat(permissionRepository.findBySystemManagedTrue(org.springframework.data.domain.Pageable.unpaged())
+                .getContent()).hasSize(15);
         assertThat(permissionRepository.findByTenantId(tenant.getId(), org.springframework.data.domain.Pageable.unpaged())
-                .getContent()).hasSize(11);
+                .getContent()).isEmpty();
         assertThat(userRepository.findByUsername("admin")).hasSize(1);
         assertThat(clientRepository.findAllByClientId(DevelopmentDataBootstrap.ADMIN_CONSOLE_CLIENT_ID)).hasSize(1);
     }

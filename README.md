@@ -232,9 +232,11 @@ effective permissions. Service-client SCIM access remains scope-based under
 `/scim/v2/**`; service-client Admin API access should use an explicit future
 machine-admin model rather than React client secrets.
 
-Admin API authorization uses a system permission catalog seeded by the backend,
-not arbitrary strings typed in the Admin Console. Built-in IAM permissions
-include:
+Admin API authorization uses a global system permission catalog seeded by the
+backend, not arbitrary strings typed in the Admin Console. Permissions are
+atomic capabilities. Roles are tenant-scoped bundles of permissions, and
+role-permission assignment references the same global system permission rows
+for every tenant. Built-in IAM permissions include:
 
 - `iam.tenants.read`, `iam.tenants.write`
 - `iam.users.read`, `iam.users.write`
@@ -247,13 +249,15 @@ include:
 - `iam.admin`
 
 Each seeded permission records display name, description, category, and
-`systemManaged`. The `platform-admin` template receives all built-in
-permissions, `tenant-admin` receives tenant-scoped management permissions, and
-`auditor` receives read-only permissions. Reserved `iam.*` permissions cannot be
-created manually through the API; future custom application permissions should
-live outside this reserved IAM namespace. Random database permission strings do
-not grant Admin API access unless they are part of the recognized built-in
-catalog.
+`systemManaged`, with no tenant owner. New tenants get role templates that
+reference the global catalog immediately: `platform-admin` receives all
+built-in permissions, `tenant-admin` receives tenant-scoped management
+permissions, and `auditor` receives read-only permissions. Reserved `iam.*`
+permissions cannot be created manually through the API. Future custom
+application permissions should belong to a tenant plus an application/resource
+server and remain separate from IAM Admin API permissions. Random database
+permission strings do not grant Admin API access unless they are part of the
+recognized built-in catalog.
 
 Role and permission resolution is additive and de-duplicated:
 
