@@ -84,13 +84,24 @@ CREATE TABLE user_attributes (
 
 CREATE TABLE permissions (
     id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL,
+    tenant_id UUID,
     name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    description TEXT,
+    category VARCHAR(64),
+    system_managed BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_permissions_tenant_name UNIQUE (tenant_id, name),
     CONSTRAINT fk_permissions_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id)
 );
+
+CREATE UNIQUE INDEX uq_permissions_system_name
+    ON permissions (name)
+    WHERE system_managed = TRUE;
+
+CREATE INDEX idx_permissions_system_managed ON permissions (system_managed);
+CREATE INDEX idx_permissions_tenant_id ON permissions (tenant_id);
 
 CREATE TABLE roles (
     id UUID PRIMARY KEY,
@@ -138,6 +149,14 @@ CREATE TABLE group_memberships (
     CONSTRAINT uq_group_memberships_group_user UNIQUE (group_id, user_id),
     CONSTRAINT fk_group_memberships_group FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
     CONSTRAINT fk_group_memberships_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE TABLE group_roles (
+    group_id UUID NOT NULL,
+    role_id UUID NOT NULL,
+    PRIMARY KEY (group_id, role_id),
+    CONSTRAINT fk_group_roles_group FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE,
+    CONSTRAINT fk_group_roles_role FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE
 );
 
 CREATE TABLE clients (
@@ -200,7 +219,13 @@ CREATE TABLE audit_logs (
 
 CREATE INDEX idx_users_tenant_account_status ON users (tenant_id, account_status);
 CREATE INDEX idx_totp_credentials_user_id ON totp_credentials (user_id);
+CREATE INDEX idx_roles_tenant_id ON roles (tenant_id);
+CREATE INDEX idx_user_roles_role_id ON user_roles (role_id);
+CREATE INDEX idx_role_permissions_permission_id ON role_permissions (permission_id);
+CREATE INDEX idx_groups_tenant_id ON groups (tenant_id);
 CREATE INDEX idx_group_memberships_user_id ON group_memberships (user_id);
+CREATE INDEX idx_group_roles_role_id ON group_roles (role_id);
+CREATE INDEX idx_clients_tenant_id ON clients (tenant_id);
 CREATE INDEX idx_audit_logs_tenant_id_created_at ON audit_logs (tenant_id, created_at);
 CREATE INDEX idx_audit_logs_resource ON audit_logs (resource_type, resource_id);
 CREATE INDEX idx_audit_logs_action_created_at ON audit_logs (action, created_at);

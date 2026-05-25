@@ -33,6 +33,7 @@ import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.TotpCredentialRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
 import io.github.doubletree.iam.platform.security.PasswordEncodingConfiguration;
+import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import io.github.doubletree.iam.platform.security.crypto.SecretEncryptionService;
 import io.github.doubletree.iam.platform.web.dto.ClientResponse;
 import io.github.doubletree.iam.platform.web.dto.UserResponse;
@@ -65,7 +66,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         PermissionApplicationService.class,
         ClientApplicationService.class,
         GroupApplicationService.class,
+        SystemPermissionCatalogService.class,
         AuditApplicationService.class,
+        AdminAuthorizationService.class,
         PasswordEncodingConfiguration.class,
         SecretEncryptionService.class,
         MfaApplicationService.class

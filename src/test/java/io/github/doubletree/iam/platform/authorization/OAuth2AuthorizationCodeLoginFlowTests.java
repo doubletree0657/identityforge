@@ -16,12 +16,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.doubletree.iam.platform.application.result.ClientSecretResult;
 import io.github.doubletree.iam.platform.application.service.ClientApplicationService;
+import io.github.doubletree.iam.platform.application.service.SystemPermissionCatalogService;
 import io.github.doubletree.iam.platform.application.service.TenantApplicationService;
 import io.github.doubletree.iam.platform.application.service.UserApplicationService;
 import io.github.doubletree.iam.platform.domain.ClientType;
+import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
 import io.github.doubletree.iam.platform.repository.AuditLogRepository;
+import io.github.doubletree.iam.platform.repository.RoleRepository;
 import java.net.URLDecoder;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -79,6 +82,9 @@ class OAuth2AuthorizationCodeLoginFlowTests {
 
     @Autowired
     private AuditLogRepository auditLogRepository;
+
+    @Autowired
+    private RoleRepository roleRepository;
 
     @DynamicPropertySource
     static void registerDataSourceProperties(DynamicPropertyRegistry registry) {
@@ -182,6 +188,10 @@ class OAuth2AuthorizationCodeLoginFlowTests {
         User user = userApplicationService.createUser(
                 tenant.getId(), "oauth-flow-user-" + uniqueSuffix, "OAuth Flow User");
         user = userApplicationService.setInitialPassword(user.getId(), RAW_PASSWORD);
+        Role tenantAdmin = roleRepository.findByTenantIdAndName(
+                        tenant.getId(), SystemPermissionCatalogService.TENANT_ADMIN_ROLE_NAME)
+                .orElseThrow();
+        user = userApplicationService.assignRoleToUser(user.getId(), tenantAdmin.getId());
 
         ClientSecretResult client = clientApplicationService.createClientWithSecret(
                 tenant.getId(),

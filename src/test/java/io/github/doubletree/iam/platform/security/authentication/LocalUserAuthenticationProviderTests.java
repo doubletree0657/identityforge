@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.doubletree.iam.platform.application.service.AuditApplicationService;
+import io.github.doubletree.iam.platform.application.service.EffectiveAuthorizationService;
 import io.github.doubletree.iam.platform.domain.AccountStatus;
 import io.github.doubletree.iam.platform.domain.AuditLog;
 import io.github.doubletree.iam.platform.domain.PasswordCredential;
@@ -36,6 +37,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         LocalUserAuthenticationProvider.class,
         LocalUserAuthenticationConfiguration.class,
         PlatformUserDetailsService.class,
+        EffectiveAuthorizationService.class,
         PasswordEncodingConfiguration.class,
         AuditApplicationService.class
 })

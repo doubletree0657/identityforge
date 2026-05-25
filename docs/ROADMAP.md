@@ -87,7 +87,8 @@ Completed in the current pre-release reset:
   of the core user record.
 - Added user profile and custom user attribute concepts.
 - Made group membership explicit.
-- Kept roles and permissions tenant-scoped.
+- Kept roles tenant-scoped while moving IAM system permissions into a global
+  catalog that tenant roles reference.
 - Expanded OAuth2 client registration fields for future persistent
   `RegisteredClient` integration.
 - Expanded audit records into security event-style metadata.

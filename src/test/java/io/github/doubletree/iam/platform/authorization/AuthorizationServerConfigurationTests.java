@@ -142,9 +142,12 @@ class AuthorizationServerConfigurationTests {
     }
 
     @Test
-    void postApiWithWriteScopeSucceeds() throws Exception {
+    void postApiWithWriteScopeAndAdminRoleSucceeds() throws Exception {
         mockMvc.perform(post("/api/tenants")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_iam.write")))
+                        .with(jwt()
+                                .jwt(jwt -> jwt
+                                        .claim("scope", "iam.write")
+                                        .claim("effective_roles", Set.of("platform-admin"))))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"Write Scope Tenant"}

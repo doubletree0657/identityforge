@@ -9,6 +9,7 @@ import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
 import io.github.doubletree.iam.platform.application.service.AuditApplicationService;
+import io.github.doubletree.iam.platform.application.service.SystemPermissionCatalogService;
 import io.github.doubletree.iam.platform.application.service.UserApplicationService;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.repository.PermissionRepository;
@@ -16,6 +17,7 @@ import io.github.doubletree.iam.platform.repository.RoleRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
 import io.github.doubletree.iam.platform.security.PasswordEncodingConfiguration;
+import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,7 +39,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Import({
         DevelopmentDataBootstrap.class,
         UserApplicationService.class,
+        SystemPermissionCatalogService.class,
         AuditApplicationService.class,
+        AdminAuthorizationService.class,
         PasswordEncodingConfiguration.class
 })
 class DevelopmentDataBootstrapTests {
