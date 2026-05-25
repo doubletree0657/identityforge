@@ -241,8 +241,9 @@ Completed slices:
 - First-class local Admin Console login backed by dev-only bootstrap admin
   credentials, the public `iam-admin-console` PKCE client, and `/api/me`.
 - Backend-enforced Admin RBAC for `/api/**`: `platform-admin` can manage all
-  tenants, `tenant-admin` is tenant-bound, and normal users are denied even
-  with IAM scopes.
+  tenants, `tenant-admin` is tenant-bound, normal users are denied even with
+  IAM scopes, and each Admin API path also requires its concrete built-in
+  system permission.
 - Effective authorization calculation across direct user roles and
   group-derived roles, with de-duplicated effective permissions exposed in JWT
   claims, `/api/me`, and the Admin Console.
@@ -251,6 +252,9 @@ Completed slices:
 - Global system IAM permission catalog seeded by the backend, including display
   metadata, reserved `iam.*` protection, and Admin API checks aligned to the
   same built-in permission names.
+- Fine-grained Admin API authorization: `iam.read`/`iam.write` scopes are still
+  required, `iam.admin` implies full administration, auditor remains read-only,
+  and the backend remains the source of truth for authorization decisions.
 - Tenant-scoped role templates for `platform-admin`, `tenant-admin`, and
   `auditor` that reference global permissions instead of duplicating
   permissions per tenant.

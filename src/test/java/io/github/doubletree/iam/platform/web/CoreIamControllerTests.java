@@ -62,6 +62,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -86,6 +87,7 @@ class CoreIamControllerTests {
 
     private static final UUID TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID USER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
+    private static final UUID OTHER_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000009");
     private static final UUID ROLE_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final UUID PERMISSION_ID = UUID.fromString("00000000-0000-0000-0000-000000000004");
     private static final UUID CLIENT_ID = UUID.fromString("00000000-0000-0000-0000-000000000005");
@@ -157,6 +159,16 @@ class CoreIamControllerTests {
                     .claim("effective_permissions", List.of("iam.fake.admin"))
                     .claim("scope", "iam.read"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
+
+    private RequestPostProcessor adminJwt(Set<String> roles, Set<String> permissions, String scope) {
+        return jwt()
+                .jwt(token -> token
+                        .claim("tenant_id", TENANT_ID.toString())
+                        .claim("effective_roles", roles)
+                        .claim("effective_permissions", permissions)
+                        .claim("scope", scope))
+                .authorities(new SimpleGrantedAuthority("SCOPE_" + scope.split(" ")[0]));
+    }
 
     @Test
     void currentUserRequiresAuthentication() throws Exception {
@@ -349,6 +361,191 @@ class CoreIamControllerTests {
                         .with(usersReadPermissionJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].username").value("alice"));
+    }
+
+    @Test
+    void platformAdminCanUseReadAndWriteAdminApisWithoutConcretePermissionClaims() throws Exception {
+        when(userApplicationService.listUsers(eq(TENANT_ID), any(Pageable.class)))
+                .thenReturn(pageOf(user("platform-reader", "Platform Reader")));
+        when(userApplicationService.createUser(eq(TENANT_ID), eq("platform-writer"), eq("Platform Writer")))
+                .thenReturn(user("platform-writer", "Platform Writer"));
+
+        RequestPostProcessor platformAdmin = adminJwt(Set.of("platform-admin"), Set.of(), "iam.read iam.write");
+
+        mockMvc.perform(get("/api/users")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(platformAdmin))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/users")
+                        .with(platformAdmin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000001",
+                                  "username":"platform-writer",
+                                  "displayName":"Platform Writer"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("platform-writer"));
+    }
+
+    @Test
+    void auditorCanReadButCannotWriteUsers() throws Exception {
+        when(userApplicationService.listUsers(eq(TENANT_ID), any(Pageable.class)))
+                .thenReturn(pageOf(user("audited-user", "Audited User")));
+
+        RequestPostProcessor auditor = adminJwt(
+                Set.of("auditor"),
+                Set.of("iam.users.read", "iam.groups.read", "iam.roles.read", "iam.permissions.read", "iam.clients.read", "iam.audit.read"),
+                "iam.read iam.write");
+
+        mockMvc.perform(get("/api/users")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(auditor))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/users")
+                        .with(auditor)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000001",
+                                  "username":"blocked-auditor",
+                                  "displayName":"Blocked Auditor"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void usersReadPermissionCannotWriteUsers() throws Exception {
+        mockMvc.perform(post("/api/users")
+                        .with(adminJwt(Set.of(), Set.of("iam.users.read"), "iam.read iam.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000001",
+                                  "username":"read-only-user",
+                                  "displayName":"Read Only User"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void usersWritePermissionCanCreateUserInOwnTenant() throws Exception {
+        when(userApplicationService.createUser(eq(TENANT_ID), eq("writer"), eq("Writer")))
+                .thenReturn(user("writer", "Writer"));
+
+        mockMvc.perform(post("/api/users")
+                        .with(adminJwt(Set.of(), Set.of("iam.users.write"), "iam.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000001",
+                                  "username":"writer",
+                                  "displayName":"Writer"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("writer"));
+    }
+
+    @Test
+    void clientsReadPermissionCannotCreateClients() throws Exception {
+        mockMvc.perform(post("/api/clients")
+                        .with(adminJwt(Set.of(), Set.of("iam.clients.read"), "iam.read iam.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000001",
+                                  "clientId":"blocked-client",
+                                  "name":"Blocked Client"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void auditReadPermissionCanReadAuditLogs() throws Exception {
+        when(auditApplicationService.listAuditLogs(eq(TENANT_ID), any(), any(), any(), any(), any(Pageable.class)))
+                .thenReturn(pageOf(auditLog()));
+
+        mockMvc.perform(get("/api/audit-logs")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(adminJwt(Set.of(), Set.of("iam.audit.read"), "iam.read")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(AUDIT_ID.toString()));
+    }
+
+    @Test
+    void auditReadPermissionIsRequiredForAuditLogs() throws Exception {
+        mockMvc.perform(get("/api/audit-logs")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(adminJwt(Set.of(), Set.of("iam.users.read"), "iam.read")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void normalUserWithoutAdminRoleOrPermissionCannotAccessAdminApi() throws Exception {
+        mockMvc.perform(get("/api/users")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(adminJwt(Set.of("employee"), Set.of(), "iam.read")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void tenantAdminStillCannotAccessAnotherTenant() throws Exception {
+        when(userApplicationService.listUsers(eq(OTHER_TENANT_ID), any(Pageable.class)))
+                .thenThrow(new AccessDeniedException("Tenant administrators can only access their own tenant"));
+
+        mockMvc.perform(get("/api/users")
+                        .queryParam("tenantId", OTHER_TENANT_ID.toString())
+                        .with(adminJwt(Set.of("tenant-admin"), Set.of("iam.users.read"), "iam.read")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("access_denied"))
+                .andExpect(jsonPath("$.message").value("Tenant administrators can only access their own tenant"));
+    }
+
+    @Test
+    void iamAdminPermissionImpliesAllAdminApiPermissions() throws Exception {
+        when(clientApplicationService.createClientWithSecret(
+                        eq(TENANT_ID),
+                        eq("iam-admin-client"),
+                        eq("IAM Admin Client"),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
+                .thenReturn(new ClientSecretResult(client("iam-admin-client", "IAM Admin Client"), "raw-client-secret-once"));
+
+        mockMvc.perform(post("/api/clients")
+                        .with(adminJwt(Set.of(), Set.of("iam.admin"), "iam.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000001",
+                                  "clientId":"iam-admin-client",
+                                  "name":"IAM Admin Client"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.client.clientId").value("iam-admin-client"));
+    }
+
+    @Test
+    void clientCredentialsTokenDoesNotBypassAdminRbac() throws Exception {
+        mockMvc.perform(get("/api/users")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(jwt().jwt(token -> token
+                                        .subject("international-iam-dev")
+                                        .claim("scope", "iam.read iam.write")
+                                        .claim("grant_type", "client_credentials"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"))))
+                .andExpect(status().isForbidden());
     }
 
     @Test

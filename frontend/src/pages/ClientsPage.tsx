@@ -9,6 +9,7 @@ import { Pagination } from '../components/Pagination';
 import { SecretNotice } from '../components/SecretNotice';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
+import { useAuth } from '../context/AuthContext';
 import { useTenantContext } from '../context/TenantContext';
 import { ClientStatus, ClientType } from '../types/api';
 import { arrayToCsv, compact, csvToArray } from '../utils/format';
@@ -20,6 +21,7 @@ export function ClientsPage() {
   const [template, setTemplate] = useState('web-app');
   const [clientType, setClientType] = useState<ClientType>('CONFIDENTIAL');
   const [grantType, setGrantType] = useState('authorization_code');
+  const { hasPermission } = useAuth();
   const { selectedTenantId, selectedTenant } = useTenantContext();
   const queryClient = useQueryClient();
   const clients = useQuery({
@@ -139,7 +141,7 @@ export function ClientsPage() {
             <Field label="Authentication method" hint="Set automatically from client type: confidential uses client_secret_basic; public uses none.">
               <Input value={clientType === 'PUBLIC' ? 'none' : 'client_secret_basic'} disabled />
             </Field>
-            <Button type="submit" disabled={createClient.isPending || !selectedTenantId}>Create</Button>
+            <Button type="submit" disabled={createClient.isPending || !selectedTenantId || !hasPermission('iam.clients.write')}>Create</Button>
             {createClient.isError && <ErrorState error={createClient.error} />}
             {oneTimeSecret && <SecretNotice title="One-time client secret" secret={oneTimeSecret} />}
           </form>
@@ -190,8 +192,8 @@ export function ClientsPage() {
                         <label className="flex items-center gap-2 text-xs"><input name="requirePkce" type="checkbox" defaultChecked={client.requirePkce} /> Require PKCE</label>
                         <label className="flex items-center gap-2 text-xs"><input name="requireConsent" type="checkbox" defaultChecked={client.requireConsent} /> Require consent</label>
                         <div className="flex gap-2">
-                          <Button type="submit" variant="secondary">Save</Button>
-                          <Button type="button" variant="danger" onClick={() => rotateSecret.mutate(client.id)} disabled={client.clientType === 'PUBLIC'}>Rotate secret</Button>
+                          <Button type="submit" variant="secondary" disabled={!hasPermission('iam.clients.write')}>Save</Button>
+                          <Button type="button" variant="danger" onClick={() => rotateSecret.mutate(client.id)} disabled={client.clientType === 'PUBLIC' || !hasPermission('iam.clients.write')}>Rotate secret</Button>
                         </div>
                       </form>
                     ),

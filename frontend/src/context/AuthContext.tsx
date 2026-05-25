@@ -8,6 +8,7 @@ interface AuthContextValue {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  hasPermission: (permission: string) => boolean;
   sessionExpired: boolean;
   error: Error | null;
 }
@@ -34,13 +35,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     retry: false,
   });
   const roles = currentUser.data?.effectiveRoles ?? currentUser.data?.roles ?? [];
+  const permissions = currentUser.data?.effectivePermissions ?? [];
+  const hasPermission = (permission: string) =>
+    roles.includes('platform-admin') || permissions.includes('iam.admin') || permissions.includes(permission);
   const value: AuthContextValue = {
     user: currentUser.data,
     isLoading: currentUser.isLoading,
     isAuthenticated: Boolean(currentUser.data) && !sessionExpired,
     isAdmin: Boolean(currentUser.data?.isPlatformAdmin || currentUser.data?.isTenantAdmin)
       || roles.includes('platform-admin')
-      || roles.includes('tenant-admin'),
+      || roles.includes('tenant-admin')
+      || permissions.some((permission) => SYSTEM_IAM_PERMISSIONS.has(permission)),
+    hasPermission,
     sessionExpired,
     error: currentUser.error,
   };
@@ -54,3 +60,21 @@ export function useAuth() {
   }
   return context;
 }
+
+const SYSTEM_IAM_PERMISSIONS = new Set([
+  'iam.admin',
+  'iam.tenants.read',
+  'iam.tenants.write',
+  'iam.users.read',
+  'iam.users.write',
+  'iam.groups.read',
+  'iam.groups.write',
+  'iam.roles.read',
+  'iam.roles.write',
+  'iam.permissions.read',
+  'iam.permissions.write',
+  'iam.clients.read',
+  'iam.clients.write',
+  'iam.audit.read',
+  'iam.mfa.manage',
+]);

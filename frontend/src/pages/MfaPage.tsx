@@ -8,6 +8,7 @@ import { Field, Input, Select } from '../components/Form';
 import { SecretNotice } from '../components/SecretNotice';
 import { ErrorState } from '../components/State';
 import { TenantRequired } from '../components/TenantRequired';
+import { useAuth } from '../context/AuthContext';
 import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
@@ -15,6 +16,7 @@ export function MfaPage() {
   const [userId, setUserId] = useState('');
   const [secret, setSecret] = useState('');
   const [otpauthUri, setOtpauthUri] = useState('');
+  const { hasPermission } = useAuth();
   const { selectedTenantId } = useTenantContext();
   const users = useQuery({
     queryKey: ['users-for-mfa', selectedTenantId],
@@ -55,8 +57,8 @@ export function MfaPage() {
             </Select>
           </Field>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => enroll.mutate()} disabled={!userId}>Enroll TOTP</Button>
-            <Button variant="danger" onClick={() => disable.mutate()} disabled={!userId}>Disable TOTP</Button>
+            <Button onClick={() => enroll.mutate()} disabled={!userId || !hasPermission('iam.mfa.manage')}>Enroll TOTP</Button>
+            <Button variant="danger" onClick={() => disable.mutate()} disabled={!userId || !hasPermission('iam.mfa.manage')}>Disable TOTP</Button>
           </div>
           {secret && (
             <div className="grid gap-3">
@@ -69,7 +71,7 @@ export function MfaPage() {
           )}
           <form onSubmit={verifyCode} className="flex gap-2">
             <Input name="code" placeholder="123456" />
-            <Button type="submit" variant="secondary" disabled={!userId}>Verify</Button>
+            <Button type="submit" variant="secondary" disabled={!userId || !hasPermission('iam.mfa.manage')}>Verify</Button>
           </form>
           {verify.data && <Badge>{verify.data.verified ? 'VERIFIED' : 'INVALID'}</Badge>}
           {(enroll.isError || verify.isError || disable.isError) && <ErrorState error={enroll.error ?? verify.error ?? disable.error} />}

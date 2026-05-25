@@ -217,9 +217,14 @@ Management APIs under `/api/**` require both OAuth2 JWT scopes and Admin RBAC:
 
 - Read operations require `iam.read`.
 - Write operations require `iam.write`.
-- The token must also contain an admin role or admin permission.
-- `platform-admin` can manage all tenants.
-- `tenant-admin` can manage resources only in its own tenant.
+- Scopes are necessary but not sufficient; the token must also contain a
+  recognized IAM Admin role or built-in system permission for the requested
+  resource and operation.
+- `platform-admin` can manage all tenants, and `iam.admin` implies every Admin
+  API permission.
+- `tenant-admin` can manage resources only in its own tenant and still needs
+  the concrete permission, such as `iam.users.read` or `iam.users.write`.
+- `auditor` is read-only because its template receives read permissions only.
 - Normal users are rejected from Admin APIs even if a token contains
   `iam.read` or `iam.write`.
 
@@ -257,7 +262,9 @@ application permissions should be modeled separately as tenant plus
 application/resource-server capabilities and remain separate from IAM Admin API
 permissions. Random database
 permission strings do not grant Admin API access unless they are part of the
-recognized built-in catalog.
+recognized built-in catalog. Client-credentials tokens, including local
+development service clients, do not bypass Admin RBAC; they need an explicit
+future machine-admin model before calling Admin APIs.
 
 Role and permission resolution is additive and de-duplicated:
 

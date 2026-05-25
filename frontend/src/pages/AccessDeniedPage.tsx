@@ -9,7 +9,7 @@ export function AccessDeniedPage() {
         <ShieldX className="h-8 w-8 text-[#b42318]" />
         <h1 className="mt-4 text-2xl font-semibold text-ink">Access denied</h1>
         <p className="mt-2 text-sm text-slate-600">
-          You are authenticated, but this account does not have platform-admin, tenant-admin, or an admin permission.
+          You are authenticated, but this account does not have a recognized IAM Admin API permission.
         </p>
         <Button className="mt-6" variant="secondary" onClick={logout}>
           Logout

@@ -8,11 +8,13 @@ import { Pagination } from '../components/Pagination';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { TenantRequired } from '../components/TenantRequired';
+import { useAuth } from '../context/AuthContext';
 import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
 export function RolesPage() {
   const [page, setPage] = useState(0);
+  const { hasPermission } = useAuth();
   const { selectedTenantId, selectedTenant } = useTenantContext();
   const queryClient = useQueryClient();
   const roles = useQuery({
@@ -64,7 +66,7 @@ export function RolesPage() {
           <form onSubmit={create} className="grid gap-3">
             <Field label="Tenant"><Input value={selectedTenant?.name ?? 'No tenant selected'} disabled /></Field>
             <Field label="Name"><Input name="name" required /></Field>
-            <Button type="submit" disabled={!selectedTenantId}>Create</Button>
+            <Button type="submit" disabled={!selectedTenantId || !hasPermission('iam.roles.write')}>Create</Button>
             {createRole.isError && <ErrorState error={createRole.error} />}
           </form>
         </Card>
@@ -90,6 +92,7 @@ export function RolesPage() {
                               key={permissionId}
                               type="button"
                               onClick={() => removePermission.mutate({ roleId: role.id, permissionId })}
+                              disabled={!hasPermission('iam.roles.write')}
                               className="rounded-full border border-line bg-slate-50 px-2 py-1 text-xs text-slate-700"
                             >
                               {permission ? `${permission.displayName || permission.name} (${permission.name})` : permissionId} ×
@@ -125,7 +128,7 @@ export function RolesPage() {
                             </option>
                           ))}
                         </Select>
-                        <Button type="submit" variant="secondary">Assign</Button>
+                        <Button type="submit" variant="secondary" disabled={!hasPermission('iam.roles.write')}>Assign</Button>
                       </form>
                     ),
                   },

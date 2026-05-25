@@ -11,6 +11,7 @@ import { Pagination } from '../components/Pagination';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { TenantRequired } from '../components/TenantRequired';
+import { useAuth } from '../context/AuthContext';
 import { useTenantContext } from '../context/TenantContext';
 import { AccountStatus } from '../types/api';
 import { formatDate } from '../utils/format';
@@ -19,6 +20,7 @@ import { PageHeader } from './PageHeader';
 
 export function UsersPage() {
   const [page, setPage] = useState(0);
+  const { hasPermission } = useAuth();
   const { selectedTenantId, selectedTenant } = useTenantContext();
   const queryClient = useQueryClient();
   const users = useQuery({
@@ -122,7 +124,7 @@ export function UsersPage() {
                 {groups.data?.items.map((group) => <option key={group.id} value={group.id}>{group.displayName || group.name}</option>)}
               </select>
             </Field>
-            <Button type="submit" icon={<Save className="h-4 w-4" />} disabled={createUser.isPending || !selectedTenantId}>Create</Button>
+            <Button type="submit" icon={<Save className="h-4 w-4" />} disabled={createUser.isPending || !selectedTenantId || !hasPermission('iam.users.write')}>Create</Button>
             {createUser.isError && <ErrorState error={createUser.error} />}
           </form>
         </Card>

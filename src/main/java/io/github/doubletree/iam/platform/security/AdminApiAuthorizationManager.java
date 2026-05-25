@@ -49,20 +49,29 @@ public class AdminApiAuthorizationManager implements AuthorizationManager<Reques
     }
 
     private boolean hasAccess(RequestAuthorizationContext context, Set<String> roles, Set<String> permissions) {
-        if (AdminAuthorities.isPlatformAdmin(roles) || AdminAuthorities.isTenantAdmin(roles)) {
+        String requiredPermission = requiredPermission(
+                context.getRequest().getMethod(),
+                context.getRequest().getRequestURI());
+        if (requiredPermission == null) {
+            return false;
+        }
+        if (AdminAuthorities.isPlatformAdmin(roles)) {
             return true;
         }
         if (permissions.contains(BuiltInPermission.IAM_ADMIN.permissionName())) {
             return true;
         }
-        String requiredPermission = requiredPermission(context.getRequest().getMethod(), context.getRequest().getRequestURI());
-        return requiredPermission != null && permissions.contains(requiredPermission);
+        return AdminAuthorities.hasAdminAccess(roles, permissions)
+                && permissions.contains(requiredPermission);
     }
 
     private String requiredPermission(String method, String path) {
         boolean write = !"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method);
         if (path.startsWith("/api/tenants")) {
             return write ? BuiltInPermission.TENANTS_WRITE.permissionName() : BuiltInPermission.TENANTS_READ.permissionName();
+        }
+        if (path.startsWith("/api/mfa")) {
+            return BuiltInPermission.MFA_MANAGE.permissionName();
         }
         if (path.startsWith("/api/users") && path.contains("/mfa/totp")) {
             return BuiltInPermission.MFA_MANAGE.permissionName();
