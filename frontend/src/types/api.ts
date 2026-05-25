@@ -144,10 +144,13 @@ export interface ClientResponse {
   status: ClientStatus;
   requirePkce: boolean;
   requireConsent: boolean;
+  resourceServerId?: string;
+  resourceServerName?: string;
   redirectUris: string[];
   grantTypes: string[];
   scopes: string[];
   authenticationMethods: string[];
+  allowedResourcePermissions: ResourcePermissionResponse[];
 }
 
 export interface ClientSecretResponse {

@@ -33,6 +33,11 @@ public class RegisteredClientMapper {
                 .forEach(grantType -> builder.authorizationGrantType(new AuthorizationGrantType(grantType)));
         client.getRedirectUris().forEach(builder::redirectUri);
         client.getScopes().forEach(builder::scope);
+        client.getAllowedResourcePermissions().stream()
+                .filter(permission -> client.getResourceServer() != null
+                        && permission.getResourceServer().getId().equals(client.getResourceServer().getId()))
+                .map(permission -> permission.getName())
+                .forEach(builder::scope);
 
         return builder.build();
     }

@@ -41,6 +41,7 @@ import io.github.doubletree.iam.platform.security.PasswordEncodingConfiguration;
 import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import io.github.doubletree.iam.platform.security.crypto.SecretEncryptionService;
 import io.github.doubletree.iam.platform.web.dto.ClientResponse;
+import io.github.doubletree.iam.platform.web.dto.ResourcePermissionResponse;
 import io.github.doubletree.iam.platform.web.dto.UserResponse;
 import java.lang.reflect.RecordComponent;
 import java.time.Instant;
@@ -725,6 +726,115 @@ class ApplicationServiceTests {
                 .doesNotContain("clientSecret", "clientSecretHash");
         assertThat(ClientResponse.from(loadedClient).toString())
                 .doesNotContain(result.clientSecret(), loadedClient.getClientSecretHash());
+    }
+
+    @Test
+    void clientCanBeLinkedToResourceServerInSameTenant() {
+        Tenant tenant = tenantApplicationService.createTenant("Client Resource Server Tenant");
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "client-linked-api", "Client Linked API", null);
+
+        Client client = clientApplicationService.createClientWithSecret(
+                tenant.getId(),
+                "linked-client",
+                "Linked Client",
+                ClientType.CONFIDENTIAL,
+                false,
+                false,
+                null,
+                Set.of("client_credentials"),
+                Set.of("openid"),
+                Set.of("client_secret_basic"),
+                resourceServer.getId())
+                .client();
+
+        Client loadedClient = clientRepository.findById(client.getId()).orElseThrow();
+        assertThat(loadedClient.getResourceServer().getId()).isEqualTo(resourceServer.getId());
+        assertThat(ClientResponse.from(loadedClient).resourceServerName()).isEqualTo("Client Linked API");
+    }
+
+    @Test
+    void clientCannotBeLinkedToResourceServerFromAnotherTenant() {
+        Tenant clientTenant = tenantApplicationService.createTenant("Client Link Boundary Tenant");
+        Tenant resourceTenant = tenantApplicationService.createTenant("Resource Link Boundary Tenant");
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                resourceTenant.getId(), "external-resource-api", "External Resource API", null);
+
+        assertThatThrownBy(() -> clientApplicationService.createClientWithSecret(
+                        clientTenant.getId(),
+                        "cross-tenant-link-client",
+                        "Cross Tenant Link Client",
+                        ClientType.CONFIDENTIAL,
+                        false,
+                        false,
+                        null,
+                        Set.of("client_credentials"),
+                        Set.of("openid"),
+                        Set.of("client_secret_basic"),
+                        resourceServer.getId()))
+                .isInstanceOf(ClientValidationException.class)
+                .hasMessage("Client and resource server must belong to the same tenant");
+    }
+
+    @Test
+    void resourcePermissionCanBeAssignedToLinkedClient() {
+        Tenant tenant = tenantApplicationService.createTenant("Client Permission Tenant");
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "client-permission-api", "Client Permission API", null);
+        ResourcePermission permission = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "client.permission.read", "Read client permission", null);
+        Client client = clientApplicationService.createClientWithSecret(
+                tenant.getId(),
+                "permission-client",
+                "Permission Client",
+                ClientType.CONFIDENTIAL,
+                false,
+                false,
+                null,
+                Set.of("client_credentials"),
+                Set.of("openid"),
+                Set.of("client_secret_basic"),
+                resourceServer.getId())
+                .client();
+
+        Client updatedClient = clientApplicationService.assignResourcePermissionToClient(client.getId(), permission.getId());
+
+        assertThat(updatedClient.getAllowedResourcePermissions())
+                .extracting(ResourcePermission::getName)
+                .containsExactly("client.permission.read");
+        assertThat(ClientResponse.from(updatedClient).allowedResourcePermissions())
+                .extracting(ResourcePermissionResponse::name)
+                .containsExactly("client.permission.read");
+        assertThat(ClientResponse.from(updatedClient).toString())
+                .doesNotContain("clientSecretHash");
+    }
+
+    @Test
+    void resourcePermissionFromAnotherResourceServerIsRejectedForClient() {
+        Tenant tenant = tenantApplicationService.createTenant("Wrong Resource Permission Tenant");
+        ResourceServer linkedResourceServer = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "linked-api", "Linked API", null);
+        ResourceServer otherResourceServer = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "other-linked-api", "Other Linked API", null);
+        ResourcePermission permission = resourceServerApplicationService.createResourcePermission(
+                otherResourceServer.getId(), "other.permission.read", "Other permission", null);
+        Client client = clientApplicationService.createClientWithSecret(
+                tenant.getId(),
+                "wrong-permission-client",
+                "Wrong Permission Client",
+                ClientType.CONFIDENTIAL,
+                false,
+                false,
+                null,
+                Set.of("client_credentials"),
+                Set.of("openid"),
+                Set.of("client_secret_basic"),
+                linkedResourceServer.getId())
+                .client();
+
+        assertThatThrownBy(() -> clientApplicationService.assignResourcePermissionToClient(client.getId(), permission.getId()))
+                .isInstanceOf(ClientValidationException.class)
+                .hasMessage("Resource permission must belong to the client's resource server");
     }
 
     @Test

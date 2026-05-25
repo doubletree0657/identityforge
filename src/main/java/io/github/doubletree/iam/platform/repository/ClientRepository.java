@@ -12,19 +12,62 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ClientRepository extends JpaRepository<Client, UUID> {
 
     @Override
-    @EntityGraph(attributePaths = {"redirectUris", "grantTypes", "scopes", "authenticationMethods"})
+    @EntityGraph(attributePaths = {
+            "redirectUris",
+            "grantTypes",
+            "scopes",
+            "authenticationMethods",
+            "resourceServer",
+            "allowedResourcePermissions",
+            "allowedResourcePermissions.resourceServer"
+    })
     Page<Client> findAll(Pageable pageable);
 
-    @EntityGraph(attributePaths = {"redirectUris", "grantTypes", "scopes", "authenticationMethods"})
+    @EntityGraph(attributePaths = {
+            "redirectUris",
+            "grantTypes",
+            "scopes",
+            "authenticationMethods",
+            "resourceServer",
+            "allowedResourcePermissions",
+            "allowedResourcePermissions.resourceServer"
+    })
     List<Client> findAllByClientId(String clientId);
 
-    @EntityGraph(attributePaths = {"redirectUris", "grantTypes", "scopes", "authenticationMethods"})
+    @EntityGraph(attributePaths = {
+            "redirectUris",
+            "grantTypes",
+            "scopes",
+            "authenticationMethods",
+            "resourceServer",
+            "allowedResourcePermissions",
+            "allowedResourcePermissions.resourceServer"
+    })
     Optional<Client> findByTenantIdAndClientId(UUID tenantId, String clientId);
 
     @Override
-    @EntityGraph(attributePaths = {"redirectUris", "grantTypes", "scopes", "authenticationMethods"})
+    @EntityGraph(attributePaths = {
+            "redirectUris",
+            "grantTypes",
+            "scopes",
+            "authenticationMethods",
+            "resourceServer",
+            "allowedResourcePermissions",
+            "allowedResourcePermissions.resourceServer"
+    })
     Optional<Client> findById(UUID id);
 
-    @EntityGraph(attributePaths = {"redirectUris", "grantTypes", "scopes", "authenticationMethods"})
+    @EntityGraph(attributePaths = {
+            "redirectUris",
+            "grantTypes",
+            "scopes",
+            "authenticationMethods",
+            "resourceServer",
+            "allowedResourcePermissions",
+            "allowedResourcePermissions.resourceServer"
+    })
     Page<Client> findByTenantId(UUID tenantId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"resourceServer"})
+    List<Client> findByResourceServerId(UUID resourceServerId);
 }

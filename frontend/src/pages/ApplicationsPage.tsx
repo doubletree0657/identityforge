@@ -36,6 +36,12 @@ export function ApplicationsPage() {
     queryFn: () => adminApi.resourceServers.permissions(selectedResourceServer!.id),
     enabled: !!selectedResourceServer?.id && canRead,
   });
+  const clients = useQuery({
+    queryKey: ['clients', selectedTenantId, 'application-links'],
+    queryFn: () => adminApi.clients.list({ page: 0, size: 100, tenantId: selectedTenantId }),
+    enabled: !!selectedTenantId && hasPermission('iam.clients.read'),
+  });
+  const linkedClients = (clients.data?.items ?? []).filter((client) => client.resourceServerId === selectedResourceServer?.id);
 
   useEffect(() => {
     if (!selectedResourceServerId && resourceServers.data?.items[0]) {
@@ -147,7 +153,7 @@ export function ApplicationsPage() {
           <Card title="Permission model">
             <div className="grid gap-2 text-sm text-slate-600">
               <p>System IAM permissions such as iam.users.read authorize the IAM platform Admin API.</p>
-              <p>Application permissions such as payroll.employee.read belong to tenant applications and are reserved for future external resource authorization.</p>
+              <p>Application permissions such as payroll.employee.read belong to tenant applications and can be allowed as OAuth2 scopes for linked clients.</p>
             </div>
           </Card>
         </div>
@@ -259,6 +265,29 @@ export function ApplicationsPage() {
                   <ErrorState error={createPermission.error ?? updatePermission.error} />
                 )}
               </div>
+            )}
+          </Card>
+          <Card title={selectedResourceServer ? `${selectedResourceServer.name} clients` : 'Linked clients'}>
+            {!selectedResourceServer && <p className="text-sm text-slate-600">Select an application to see linked OAuth2 clients.</p>}
+            {selectedResourceServer && !hasPermission('iam.clients.read') && (
+              <ErrorState error={{ code: 'access_denied', message: 'Missing iam.clients.read.' }} />
+            )}
+            {selectedResourceServer && clients.isLoading && <LoadingState />}
+            {selectedResourceServer && clients.isError && <ErrorState error={clients.error} />}
+            {selectedResourceServer && clients.data && (
+              <DataTable
+                items={linkedClients}
+                columns={[
+                  { header: 'Client', render: (client) => <span className="font-medium">{client.name}</span> },
+                  { header: 'Client ID', render: (client) => client.clientId },
+                  { header: 'Status', render: (client) => <Badge>{client.status}</Badge> },
+                  {
+                    header: 'Allowed application scopes',
+                    render: (client) => client.allowedResourcePermissions.map((permission) => permission.name).join(', ') || '-',
+                  },
+                ]}
+                emptyTitle="No clients linked to this application"
+              />
             )}
           </Card>
         </div>

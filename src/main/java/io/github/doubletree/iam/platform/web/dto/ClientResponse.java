@@ -15,10 +15,13 @@ public record ClientResponse(
         ClientStatus status,
         boolean requirePkce,
         boolean requireConsent,
+        UUID resourceServerId,
+        String resourceServerName,
         Set<String> redirectUris,
         Set<String> grantTypes,
         Set<String> scopes,
-        Set<String> authenticationMethods) {
+        Set<String> authenticationMethods,
+        Set<ResourcePermissionResponse> allowedResourcePermissions) {
 
     public static ClientResponse from(Client client) {
         return new ClientResponse(
@@ -30,9 +33,14 @@ public record ClientResponse(
                 client.getStatus(),
                 client.isRequirePkce(),
                 client.isRequireConsent(),
+                client.getResourceServer() == null ? null : client.getResourceServer().getId(),
+                client.getResourceServer() == null ? null : client.getResourceServer().getName(),
                 client.getRedirectUris(),
                 client.getGrantTypes(),
                 client.getScopes(),
-                client.getAuthenticationMethods());
+                client.getAuthenticationMethods(),
+                client.getAllowedResourcePermissions().stream()
+                        .map(ResourcePermissionResponse::from)
+                        .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)));
     }
 }

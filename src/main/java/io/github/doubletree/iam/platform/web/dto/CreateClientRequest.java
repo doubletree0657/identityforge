@@ -17,5 +17,6 @@ public record CreateClientRequest(
         Set<String> redirectUris,
         Set<String> grantTypes,
         Set<String> scopes,
-        Set<String> authenticationMethods) {
+        Set<String> authenticationMethods,
+        UUID resourceServerId) {
 }

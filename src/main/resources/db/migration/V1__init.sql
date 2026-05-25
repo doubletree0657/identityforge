@@ -184,6 +184,7 @@ CREATE TABLE group_roles (
 CREATE TABLE clients (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,
+    resource_server_id UUID,
     client_id VARCHAR(255) NOT NULL,
     client_name VARCHAR(255) NOT NULL,
     client_type VARCHAR(32) NOT NULL DEFAULT 'CONFIDENTIAL',
@@ -194,7 +195,8 @@ CREATE TABLE clients (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_clients_tenant_client_id UNIQUE (tenant_id, client_id),
-    CONSTRAINT fk_clients_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+    CONSTRAINT fk_clients_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+    CONSTRAINT fk_clients_resource_server FOREIGN KEY (resource_server_id) REFERENCES resource_servers (id)
 );
 
 CREATE TABLE client_redirect_uris (
@@ -225,6 +227,14 @@ CREATE TABLE client_authentication_methods (
     CONSTRAINT fk_client_authentication_methods_client FOREIGN KEY (client_id) REFERENCES clients (id) ON DELETE CASCADE
 );
 
+CREATE TABLE client_allowed_resource_permissions (
+    client_id UUID NOT NULL,
+    resource_permission_id UUID NOT NULL,
+    PRIMARY KEY (client_id, resource_permission_id),
+    CONSTRAINT fk_client_allowed_resource_permissions_client FOREIGN KEY (client_id) REFERENCES clients (id) ON DELETE CASCADE,
+    CONSTRAINT fk_client_allowed_resource_permissions_permission FOREIGN KEY (resource_permission_id) REFERENCES resource_permissions (id) ON DELETE CASCADE
+);
+
 CREATE TABLE audit_logs (
     id UUID PRIMARY KEY,
     tenant_id UUID,
@@ -250,6 +260,8 @@ CREATE INDEX idx_groups_tenant_id ON groups (tenant_id);
 CREATE INDEX idx_group_memberships_user_id ON group_memberships (user_id);
 CREATE INDEX idx_group_roles_role_id ON group_roles (role_id);
 CREATE INDEX idx_clients_tenant_id ON clients (tenant_id);
+CREATE INDEX idx_clients_resource_server_id ON clients (resource_server_id);
+CREATE INDEX idx_client_allowed_resource_permissions_permission_id ON client_allowed_resource_permissions (resource_permission_id);
 CREATE INDEX idx_audit_logs_tenant_id_created_at ON audit_logs (tenant_id, created_at);
 CREATE INDEX idx_audit_logs_resource ON audit_logs (resource_type, resource_id);
 CREATE INDEX idx_audit_logs_action_created_at ON audit_logs (action, created_at);

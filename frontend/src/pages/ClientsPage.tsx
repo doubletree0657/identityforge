@@ -11,7 +11,7 @@ import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { useAuth } from '../context/AuthContext';
 import { useTenantContext } from '../context/TenantContext';
-import { ClientStatus, ClientType } from '../types/api';
+import { ClientResponse, ClientStatus, ClientType, ResourcePermissionResponse } from '../types/api';
 import { arrayToCsv, compact, csvToArray } from '../utils/format';
 import { PageHeader } from './PageHeader';
 
@@ -29,6 +29,23 @@ export function ClientsPage() {
     queryFn: () => adminApi.clients.list({ page, size: 20, tenantId: selectedTenantId }),
     enabled: !!selectedTenantId,
   });
+  const resourceServers = useQuery({
+    queryKey: ['resource-servers', selectedTenantId, 'client-link'],
+    queryFn: () => adminApi.resourceServers.list({ page: 0, size: 100, tenantId: selectedTenantId }),
+    enabled: !!selectedTenantId && hasPermission('iam.resource-servers.read'),
+  });
+  const resourcePermissions = useQuery({
+    queryKey: ['resource-permissions-by-server', selectedTenantId],
+    queryFn: async () => {
+      const applications = resourceServers.data?.items ?? [];
+      const entries = await Promise.all(applications.map(async (application) => [
+        application.id,
+        await adminApi.resourceServers.permissions(application.id),
+      ] as const));
+      return Object.fromEntries(entries) as Record<string, ResourcePermissionResponse[]>;
+    },
+    enabled: !!selectedTenantId && !!resourceServers.data,
+  });
   const createClient = useMutation({
     mutationFn: adminApi.clients.create,
     onSuccess: (result) => {
@@ -43,6 +60,16 @@ export function ClientsPage() {
   const rotateSecret = useMutation({
     mutationFn: adminApi.clients.rotateSecret,
     onSuccess: (result) => setOneTimeSecret(result.clientSecret ?? ''),
+  });
+  const assignResourcePermission = useMutation({
+    mutationFn: ({ clientId, permissionId }: { clientId: string; permissionId: string }) =>
+      adminApi.clients.assignResourcePermission(clientId, permissionId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clients'] }),
+  });
+  const removeResourcePermission = useMutation({
+    mutationFn: ({ clientId, permissionId }: { clientId: string; permissionId: string }) =>
+      adminApi.clients.removeResourcePermission(clientId, permissionId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clients'] }),
   });
 
   const templates = {
@@ -92,7 +119,15 @@ export function ClientsPage() {
       grantTypes: [selectedGrant],
       scopes: csvToArray(String(form.get('scopes') ?? '')),
       authenticationMethods: [selectedType === 'PUBLIC' ? 'none' : 'client_secret_basic'],
+      resourceServerId: String(form.get('resourceServerId') ?? '') || undefined,
     });
+  }
+
+  function permissionsForClient(client: ClientResponse) {
+    if (!client.resourceServerId) {
+      return [];
+    }
+    return resourcePermissions.data?.[client.resourceServerId] ?? [];
   }
 
   return (
@@ -138,6 +173,14 @@ export function ClientsPage() {
             <Field label="Scopes" hint="Scopes are delegated access names such as iam.read, openid, or profile.">
               <Input key={`${template}-scopes`} name="scopes" defaultValue={selectedTemplate.scopes} />
             </Field>
+            <Field label="Application" hint="Optional tenant-owned resource server whose application permissions can become OAuth2 scopes.">
+              <Select name="resourceServerId" disabled={!hasPermission('iam.resource-servers.read')}>
+                <option value="">No linked application</option>
+                {(resourceServers.data?.items ?? []).map((resourceServer) => (
+                  <option key={resourceServer.id} value={resourceServer.id}>{resourceServer.name}</option>
+                ))}
+              </Select>
+            </Field>
             <Field label="Authentication method" hint="Set automatically from client type: confidential uses client_secret_basic; public uses none.">
               <Input value={clientType === 'PUBLIC' ? 'none' : 'client_secret_basic'} disabled />
             </Field>
@@ -159,7 +202,55 @@ export function ClientsPage() {
                   { header: 'Client ID', render: (client) => client.clientId },
                   { header: 'Type', render: (client) => <Badge>{client.clientType}</Badge> },
                   { header: 'Status', render: (client) => <Badge>{client.status}</Badge> },
+                  { header: 'Application', render: (client) => client.resourceServerName || '-' },
                   { header: 'Scopes', render: (client) => client.scopes.join(', ') || '-' },
+                  {
+                    header: 'Application permissions',
+                    render: (client) => (
+                      <div className="grid min-w-[260px] gap-2">
+                        <div className="flex flex-wrap gap-1">
+                          {client.allowedResourcePermissions.length === 0 && <span className="text-slate-500">-</span>}
+                          {client.allowedResourcePermissions.map((permission) => (
+                            <span key={permission.id} className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs">
+                              {permission.name}
+                              <button
+                                type="button"
+                                className="font-semibold text-[#b42318]"
+                                onClick={() => removeResourcePermission.mutate({ clientId: client.id, permissionId: permission.id })}
+                                disabled={!hasPermission('iam.clients.write')}
+                                aria-label={`Remove ${permission.name}`}
+                              >
+                                x
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        {client.resourceServerId && (
+                          <form
+                            className="flex gap-2"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              const form = new FormData(event.currentTarget);
+                              const permissionId = String(form.get('permissionId') ?? '');
+                              if (permissionId) {
+                                assignResourcePermission.mutate({ clientId: client.id, permissionId });
+                              }
+                            }}
+                          >
+                            <Select name="permissionId" className="min-w-[190px]" disabled={!hasPermission('iam.clients.write')}>
+                              <option value="">Allow scope</option>
+                              {permissionsForClient(client)
+                                .filter((permission) => !client.allowedResourcePermissions.some((allowed) => allowed.id === permission.id))
+                                .map((permission) => (
+                                  <option key={permission.id} value={permission.id}>{permission.name}</option>
+                                ))}
+                            </Select>
+                            <Button type="submit" variant="secondary" disabled={!hasPermission('iam.clients.write')}>Add</Button>
+                          </form>
+                        )}
+                      </div>
+                    ),
+                  },
                   {
                     header: 'Update',
                     render: (client) => (
@@ -179,6 +270,7 @@ export function ClientsPage() {
                               grantTypes: csvToArray(String(form.get('grantTypes') ?? '')),
                               scopes: csvToArray(String(form.get('scopes') ?? '')),
                               authenticationMethods: csvToArray(String(form.get('authenticationMethods') ?? '')),
+                              resourceServerId: String(form.get('resourceServerId') ?? '') || undefined,
                             }),
                           });
                         }}
@@ -189,6 +281,12 @@ export function ClientsPage() {
                         <Input name="grantTypes" defaultValue={arrayToCsv(client.grantTypes)} />
                         <Input name="scopes" defaultValue={arrayToCsv(client.scopes)} />
                         <Input name="authenticationMethods" defaultValue={arrayToCsv(client.authenticationMethods)} />
+                        <Select name="resourceServerId" defaultValue={client.resourceServerId ?? ''} disabled={!hasPermission('iam.resource-servers.read')}>
+                          <option value="">No linked application</option>
+                          {(resourceServers.data?.items ?? []).map((resourceServer) => (
+                            <option key={resourceServer.id} value={resourceServer.id}>{resourceServer.name}</option>
+                          ))}
+                        </Select>
                         <label className="flex items-center gap-2 text-xs"><input name="requirePkce" type="checkbox" defaultChecked={client.requirePkce} /> Require PKCE</label>
                         <label className="flex items-center gap-2 text-xs"><input name="requireConsent" type="checkbox" defaultChecked={client.requireConsent} /> Require consent</label>
                         <div className="flex gap-2">
@@ -203,7 +301,14 @@ export function ClientsPage() {
               <Pagination page={clients.data} onPageChange={setPage} />
             </>
           )}
-          {(updateClient.isError || rotateSecret.isError) && <div className="mt-3"><ErrorState error={updateClient.error ?? rotateSecret.error} /></div>}
+          {(updateClient.isError || rotateSecret.isError || assignResourcePermission.isError || removeResourcePermission.isError) && (
+            <div className="mt-3">
+              <ErrorState error={updateClient.error ?? rotateSecret.error ?? assignResourcePermission.error ?? removeResourcePermission.error} />
+            </div>
+          )}
+          <p className="mt-3 text-sm text-slate-600">
+            Application permissions are allowed OAuth2 scopes for the linked tenant application. They stay separate from system IAM permissions used to protect this Admin API.
+          </p>
         </Card>
       </div>
     </>

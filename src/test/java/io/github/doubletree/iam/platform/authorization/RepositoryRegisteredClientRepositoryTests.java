@@ -6,8 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.github.doubletree.iam.platform.domain.Client;
 import io.github.doubletree.iam.platform.domain.ClientStatus;
 import io.github.doubletree.iam.platform.domain.ClientType;
+import io.github.doubletree.iam.platform.domain.ResourcePermission;
+import io.github.doubletree.iam.platform.domain.ResourceServer;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
+import io.github.doubletree.iam.platform.repository.ResourcePermissionRepository;
+import io.github.doubletree.iam.platform.repository.ResourceServerRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import java.time.Duration;
 import java.util.Set;
@@ -40,6 +44,12 @@ class RepositoryRegisteredClientRepositoryTests {
 
     @Autowired
     private ClientRepository clientRepository;
+
+    @Autowired
+    private ResourceServerRepository resourceServerRepository;
+
+    @Autowired
+    private ResourcePermissionRepository resourcePermissionRepository;
 
     @Autowired
     private RepositoryRegisteredClientRepository registeredClientRepository;
@@ -128,6 +138,31 @@ class RepositoryRegisteredClientRepositoryTests {
         assertThat(registeredClient.getScopes()).containsExactlyInAnyOrder("openid", "profile");
         assertThat(registeredClient.getClientSettings().isRequireProofKey()).isTrue();
         assertThat(registeredClient.getClientSettings().isRequireAuthorizationConsent()).isFalse();
+    }
+
+    @Test
+    void registeredClientIncludesAllowedApplicationPermissionScopes() {
+        Tenant tenant = tenantRepository.save(Tenant.create("Application Scope Tenant"));
+        ResourceServer resourceServer = resourceServerRepository.save(
+                ResourceServer.create(tenant, "payroll-api", "Payroll API"));
+        ResourcePermission permission = resourcePermissionRepository.save(
+                ResourcePermission.create(resourceServer, "payroll.employee.read", "Read employees", null));
+        Client client = Client.create(tenant, "registered-application-client", "Registered Application Client");
+        client.setClientSecretHash("{bcrypt}stored-client-secret-hash");
+        client.setRequirePkce(false);
+        client.setRedirectUris(Set.of("https://client.example.test/callback"));
+        client.setGrantTypes(Set.of("authorization_code"));
+        client.setScopes(Set.of("openid"));
+        client.setAuthenticationMethods(Set.of("client_secret_basic"));
+        client.setResourceServer(resourceServer);
+        client.addAllowedResourcePermission(permission);
+        clientRepository.saveAndFlush(client);
+
+        RegisteredClient registeredClient = registeredClientRepository.findByClientId("registered-application-client");
+
+        assertThat(registeredClient.getScopes())
+                .contains("openid", "payroll.employee.read")
+                .doesNotContain("payroll.salary.write");
     }
 
     @Test

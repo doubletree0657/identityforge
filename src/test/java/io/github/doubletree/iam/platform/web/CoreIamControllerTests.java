@@ -678,6 +678,7 @@ class CoreIamControllerTests {
                         any(),
                         any(),
                         any(),
+                        any(),
                         any()))
                 .thenReturn(new ClientSecretResult(client("iam-admin-client", "IAM Admin Client"), "raw-client-secret-once"));
 
@@ -1050,6 +1051,7 @@ class CoreIamControllerTests {
                         any(),
                         any(),
                         any(),
+                        any(),
                         any()))
                 .thenReturn(new ClientSecretResult(client, "raw-client-secret-once"));
 
@@ -1086,11 +1088,42 @@ class CoreIamControllerTests {
                 .andExpect(jsonPath("$.items[0].id").value(CLIENT_ID.toString()))
                 .andExpect(jsonPath("$.items[0].clientSecretHash").doesNotExist())
                 .andExpect(jsonPath("$.items[0].clientSecret").doesNotExist())
+                .andExpect(jsonPath("$.items[0].allowedResourcePermissions").isArray())
                 .andExpect(jsonPath("$.totalElements").value(1));
         mockMvc.perform(get("/api/clients/{clientId}", CLIENT_ID).with(readScopeJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(CLIENT_ID.toString()))
                 .andExpect(jsonPath("$.clientSecretHash").doesNotExist());
+    }
+
+    @Test
+    void managesClientResourcePermissionsThroughApi() throws Exception {
+        Client client = client("application-client", "Application Client");
+        ResourceServer resourceServer = resourceServer("payroll-api", "Payroll API");
+        ResourcePermission permission = resourcePermission(resourceServer, "payroll.employee.read");
+        client.setResourceServer(resourceServer);
+        client.addAllowedResourcePermission(permission);
+        when(clientApplicationService.listAllowedResourcePermissions(eq(CLIENT_ID)))
+                .thenReturn(Set.of(permission));
+        when(clientApplicationService.assignResourcePermissionToClient(eq(CLIENT_ID), eq(RESOURCE_PERMISSION_ID)))
+                .thenReturn(client);
+        when(clientApplicationService.removeResourcePermissionFromClient(eq(CLIENT_ID), eq(RESOURCE_PERMISSION_ID)))
+                .thenReturn(client);
+
+        mockMvc.perform(get("/api/clients/{clientId}/resource-permissions", CLIENT_ID)
+                        .with(readScopeJwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("payroll.employee.read"));
+        mockMvc.perform(post("/api/clients/{clientId}/resource-permissions/{permissionId}", CLIENT_ID, RESOURCE_PERMISSION_ID)
+                        .with(writeScopeJwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resourceServerId").value(RESOURCE_SERVER_ID.toString()))
+                .andExpect(jsonPath("$.resourceServerName").value("Payroll API"))
+                .andExpect(jsonPath("$.allowedResourcePermissions[0].name").value("payroll.employee.read"))
+                .andExpect(jsonPath("$.clientSecretHash").doesNotExist());
+        mockMvc.perform(delete("/api/clients/{clientId}/resource-permissions/{permissionId}", CLIENT_ID, RESOURCE_PERMISSION_ID)
+                        .with(writeScopeJwt))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -1106,6 +1139,7 @@ class CoreIamControllerTests {
                         eq(ClientType.PUBLIC),
                         eq(true),
                         eq(false),
+                        any(),
                         any(),
                         any(),
                         any(),
@@ -1144,6 +1178,7 @@ class CoreIamControllerTests {
                         eq(ClientStatus.DISABLED),
                         eq(true),
                         eq(false),
+                        any(),
                         any(),
                         any(),
                         any(),
@@ -1195,6 +1230,7 @@ class CoreIamControllerTests {
                         eq("Public Secret Auth"),
                         eq(ClientType.PUBLIC),
                         eq(true),
+                        any(),
                         any(),
                         any(),
                         any(),

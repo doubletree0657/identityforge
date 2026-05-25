@@ -6,8 +6,12 @@ import io.github.doubletree.iam.platform.application.result.ClientSecretResult;
 import io.github.doubletree.iam.platform.domain.Client;
 import io.github.doubletree.iam.platform.domain.ClientStatus;
 import io.github.doubletree.iam.platform.domain.ClientType;
+import io.github.doubletree.iam.platform.domain.ResourcePermission;
+import io.github.doubletree.iam.platform.domain.ResourceServer;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
+import io.github.doubletree.iam.platform.repository.ResourcePermissionRepository;
+import io.github.doubletree.iam.platform.repository.ResourceServerRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import java.security.SecureRandom;
@@ -26,6 +30,8 @@ public class ClientApplicationService {
 
     private final ClientRepository clientRepository;
     private final TenantRepository tenantRepository;
+    private final ResourceServerRepository resourceServerRepository;
+    private final ResourcePermissionRepository resourcePermissionRepository;
     private final AuditApplicationService auditApplicationService;
     private final PasswordEncoder passwordEncoder;
     private final AdminAuthorizationService adminAuthorizationService;
@@ -34,11 +40,15 @@ public class ClientApplicationService {
     public ClientApplicationService(
             ClientRepository clientRepository,
             TenantRepository tenantRepository,
+            ResourceServerRepository resourceServerRepository,
+            ResourcePermissionRepository resourcePermissionRepository,
             AuditApplicationService auditApplicationService,
             PasswordEncoder passwordEncoder,
             AdminAuthorizationService adminAuthorizationService) {
         this.clientRepository = clientRepository;
         this.tenantRepository = tenantRepository;
+        this.resourceServerRepository = resourceServerRepository;
+        this.resourcePermissionRepository = resourcePermissionRepository;
         this.auditApplicationService = auditApplicationService;
         this.passwordEncoder = passwordEncoder;
         this.adminAuthorizationService = adminAuthorizationService;
@@ -56,6 +66,33 @@ public class ClientApplicationService {
             Set<String> grantTypes,
             Set<String> scopes,
             Set<String> authenticationMethods) {
+        return createClientWithSecret(
+                tenantId,
+                clientId,
+                clientName,
+                clientType,
+                requirePkce,
+                requireConsent,
+                redirectUris,
+                grantTypes,
+                scopes,
+                authenticationMethods,
+                null);
+    }
+
+    @Transactional
+    public ClientSecretResult createClientWithSecret(
+            UUID tenantId,
+            String clientId,
+            String clientName,
+            ClientType clientType,
+            Boolean requirePkce,
+            Boolean requireConsent,
+            Set<String> redirectUris,
+            Set<String> grantTypes,
+            Set<String> scopes,
+            Set<String> authenticationMethods,
+            UUID resourceServerId) {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Tenant not found: " + tenantId));
         adminAuthorizationService.assertTenantAccess(tenant.getId());
@@ -73,6 +110,7 @@ public class ClientApplicationService {
                 grantTypes,
                 scopes,
                 authenticationMethods);
+        candidate.setResourceServer(loadResourceServerForTenant(resourceServerId, tenant.getId()));
 
         String rawSecret = null;
         if (candidate.getClientType() == ClientType.CONFIDENTIAL
@@ -112,6 +150,31 @@ public class ClientApplicationService {
             Set<String> grantTypes,
             Set<String> scopes,
             Set<String> authenticationMethods) {
+        return updateClient(
+                clientId,
+                clientName,
+                status,
+                requirePkce,
+                requireConsent,
+                redirectUris,
+                grantTypes,
+                scopes,
+                authenticationMethods,
+                null);
+    }
+
+    @Transactional
+    public Client updateClient(
+            UUID clientId,
+            String clientName,
+            ClientStatus status,
+            Boolean requirePkce,
+            Boolean requireConsent,
+            Set<String> redirectUris,
+            Set<String> grantTypes,
+            Set<String> scopes,
+            Set<String> authenticationMethods,
+            UUID resourceServerId) {
         Client client = loadClient(clientId);
         configureClientSafely(
                 client,
@@ -124,10 +187,49 @@ public class ClientApplicationService {
                 grantTypes,
                 scopes,
                 authenticationMethods);
+        if (resourceServerId != null) {
+            ResourceServer resourceServer = loadResourceServerForTenant(resourceServerId, client.getTenant().getId());
+            if (client.getResourceServer() == null || !client.getResourceServer().getId().equals(resourceServerId)) {
+                client.clearAllowedResourcePermissions();
+            }
+            client.setResourceServer(resourceServer);
+        }
         validateClient(client);
         Client savedClient = clientRepository.save(client);
         auditApplicationService.recordEvent(
                 savedClient.getTenant().getId(), "CLIENT_UPDATED", "CLIENT", savedClient.getId());
+        return savedClient;
+    }
+
+    @Transactional(readOnly = true)
+    public Set<ResourcePermission> listAllowedResourcePermissions(UUID clientId) {
+        return loadClient(clientId).getAllowedResourcePermissions();
+    }
+
+    @Transactional
+    public Client assignResourcePermissionToClient(UUID clientId, UUID permissionId) {
+        Client client = loadClient(clientId);
+        ResourcePermission permission = resourcePermissionRepository.findById(permissionId)
+                .orElseThrow(() -> new EntityNotFoundException("Resource permission not found: " + permissionId));
+        adminAuthorizationService.assertTenantAccess(permission.getResourceServer().getTenant().getId());
+        validateResourcePermissionBelongsToClientResourceServer(client, permission);
+        client.addAllowedResourcePermission(permission);
+        Client savedClient = clientRepository.save(client);
+        auditApplicationService.recordEvent(
+                savedClient.getTenant().getId(), "CLIENT_RESOURCE_PERMISSION_ASSIGNED", "CLIENT", savedClient.getId());
+        return savedClient;
+    }
+
+    @Transactional
+    public Client removeResourcePermissionFromClient(UUID clientId, UUID permissionId) {
+        Client client = loadClient(clientId);
+        ResourcePermission permission = resourcePermissionRepository.findById(permissionId)
+                .orElseThrow(() -> new EntityNotFoundException("Resource permission not found: " + permissionId));
+        validateResourcePermissionBelongsToClientResourceServer(client, permission);
+        client.removeAllowedResourcePermission(permission);
+        Client savedClient = clientRepository.save(client);
+        auditApplicationService.recordEvent(
+                savedClient.getTenant().getId(), "CLIENT_RESOURCE_PERMISSION_REMOVED", "CLIENT", savedClient.getId());
         return savedClient;
     }
 
@@ -152,6 +254,32 @@ public class ClientApplicationService {
                 .orElseThrow(() -> new EntityNotFoundException("Client not found: " + clientId));
         adminAuthorizationService.assertTenantAccess(client.getTenant().getId());
         return client;
+    }
+
+    private ResourceServer loadResourceServerForTenant(UUID resourceServerId, UUID tenantId) {
+        if (resourceServerId == null) {
+            return null;
+        }
+        ResourceServer resourceServer = resourceServerRepository.findById(resourceServerId)
+                .orElseThrow(() -> new EntityNotFoundException("Resource server not found: " + resourceServerId));
+        adminAuthorizationService.assertTenantAccess(resourceServer.getTenant().getId());
+        if (!resourceServer.getTenant().getId().equals(tenantId)) {
+            throw new ClientValidationException("Client and resource server must belong to the same tenant");
+        }
+        return resourceServer;
+    }
+
+    private void validateResourcePermissionBelongsToClientResourceServer(Client client, ResourcePermission permission) {
+        ResourceServer resourceServer = client.getResourceServer();
+        if (resourceServer == null) {
+            throw new ClientValidationException("Client must be linked to a resource server before assigning application permissions");
+        }
+        if (!permission.getResourceServer().getId().equals(resourceServer.getId())) {
+            throw new ClientValidationException("Resource permission must belong to the client's resource server");
+        }
+        if (!permission.getResourceServer().getTenant().getId().equals(client.getTenant().getId())) {
+            throw new ClientValidationException("Client and resource permission must belong to the same tenant");
+        }
     }
 
     private void configureClient(

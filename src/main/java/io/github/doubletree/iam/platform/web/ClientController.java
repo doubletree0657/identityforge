@@ -7,6 +7,7 @@ import io.github.doubletree.iam.platform.web.dto.ClientResponse;
 import io.github.doubletree.iam.platform.web.dto.ClientSecretResponse;
 import io.github.doubletree.iam.platform.web.dto.CreateClientRequest;
 import io.github.doubletree.iam.platform.web.dto.PageResponse;
+import io.github.doubletree.iam.platform.web.dto.ResourcePermissionResponse;
 import io.github.doubletree.iam.platform.web.dto.UpdateClientRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -16,6 +17,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -50,7 +52,8 @@ public class ClientController {
                 request.redirectUris(),
                 request.grantTypes(),
                 request.scopes(),
-                request.authenticationMethods());
+                request.authenticationMethods(),
+                request.resourceServerId());
         return ClientSecretResponse.from(result);
     }
 
@@ -83,7 +86,8 @@ public class ClientController {
                 request.redirectUris(),
                 request.grantTypes(),
                 request.scopes(),
-                request.authenticationMethods());
+                request.authenticationMethods(),
+                request.resourceServerId());
         return ClientResponse.from(client);
     }
 
@@ -91,5 +95,29 @@ public class ClientController {
     @Operation(summary = "Rotate client secret", description = "Requires iam.write scope.")
     public ClientSecretResponse rotateClientSecret(@PathVariable UUID clientId) {
         return ClientSecretResponse.from(clientApplicationService.rotateClientSecret(clientId));
+    }
+
+    @GetMapping("/{clientId}/resource-permissions")
+    @Operation(summary = "List client application permissions", description = "Requires iam.read scope.")
+    public java.util.List<ResourcePermissionResponse> listClientResourcePermissions(@PathVariable UUID clientId) {
+        return clientApplicationService.listAllowedResourcePermissions(clientId).stream()
+                .map(ResourcePermissionResponse::from)
+                .toList();
+    }
+
+    @PostMapping("/{clientId}/resource-permissions/{permissionId}")
+    @Operation(summary = "Allow client application permission", description = "Requires iam.write scope.")
+    public ClientResponse assignClientResourcePermission(
+            @PathVariable UUID clientId,
+            @PathVariable UUID permissionId) {
+        return ClientResponse.from(clientApplicationService.assignResourcePermissionToClient(clientId, permissionId));
+    }
+
+    @DeleteMapping("/{clientId}/resource-permissions/{permissionId}")
+    @Operation(summary = "Remove client application permission", description = "Requires iam.write scope.")
+    public ClientResponse removeClientResourcePermission(
+            @PathVariable UUID clientId,
+            @PathVariable UUID permissionId) {
+        return ClientResponse.from(clientApplicationService.removeResourcePermissionFromClient(clientId, permissionId));
     }
 }

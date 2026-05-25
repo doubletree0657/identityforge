@@ -11,6 +11,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -58,6 +60,10 @@ public class Client {
     @Column(nullable = false)
     private boolean requireConsent = true;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "resource_server_id")
+    private ResourceServer resourceServer;
+
     @ElementCollection
     @CollectionTable(name = "client_redirect_uris", joinColumns = @JoinColumn(name = "client_id"))
     @Column(name = "redirect_uri", nullable = false)
@@ -77,6 +83,13 @@ public class Client {
     @CollectionTable(name = "client_authentication_methods", joinColumns = @JoinColumn(name = "client_id"))
     @Column(name = "authentication_method", nullable = false)
     private Set<String> authenticationMethods = new LinkedHashSet<>();
+
+    @ManyToMany
+    @JoinTable(
+            name = "client_allowed_resource_permissions",
+            joinColumns = @JoinColumn(name = "client_id"),
+            inverseJoinColumns = @JoinColumn(name = "resource_permission_id"))
+    private Set<ResourcePermission> allowedResourcePermissions = new LinkedHashSet<>();
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
@@ -217,6 +230,34 @@ public class Client {
 
     public void setAuthenticationMethods(Set<String> authenticationMethods) {
         replaceAuthenticationMethods(authenticationMethods);
+    }
+
+    public ResourceServer getResourceServer() {
+        return resourceServer;
+    }
+
+    public void setResourceServer(ResourceServer resourceServer) {
+        this.resourceServer = resourceServer;
+    }
+
+    public Set<ResourcePermission> getAllowedResourcePermissions() {
+        return Collections.unmodifiableSet(allowedResourcePermissions);
+    }
+
+    public void addAllowedResourcePermission(ResourcePermission permission) {
+        if (permission != null) {
+            allowedResourcePermissions.add(permission);
+        }
+    }
+
+    public void removeAllowedResourcePermission(ResourcePermission permission) {
+        if (permission != null) {
+            allowedResourcePermissions.remove(permission);
+        }
+    }
+
+    public void clearAllowedResourcePermissions() {
+        allowedResourcePermissions.clear();
     }
 
     public void replaceRedirectUris(Set<String> redirectUris) {

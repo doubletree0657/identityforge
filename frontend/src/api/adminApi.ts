@@ -131,6 +131,7 @@ export const adminApi = {
       grantTypes?: string[];
       scopes?: string[];
       authenticationMethods?: string[];
+      resourceServerId?: string;
     }) => apiRequest<ClientSecretResponse>('POST', '/api/clients', body),
     update: (id: string, body: {
       clientName?: string;
@@ -141,8 +142,15 @@ export const adminApi = {
       grantTypes?: string[];
       scopes?: string[];
       authenticationMethods?: string[];
+      resourceServerId?: string;
     }) => apiRequest<ClientResponse>('PUT', `/api/clients/${id}`, body),
     rotateSecret: (id: string) => apiRequest<ClientSecretResponse>('POST', `/api/clients/${id}/secret/rotation`),
+    resourcePermissions: (id: string) =>
+      apiRequest<ResourcePermissionResponse[]>('GET', `/api/clients/${id}/resource-permissions`),
+    assignResourcePermission: (id: string, permissionId: string) =>
+      apiRequest<ClientResponse>('POST', `/api/clients/${id}/resource-permissions/${permissionId}`),
+    removeResourcePermission: (id: string, permissionId: string) =>
+      apiRequest<ClientResponse>('DELETE', `/api/clients/${id}/resource-permissions/${permissionId}`),
   },
   mfa: {
     enrollTotp: (userId: string) => apiRequest<MfaEnrollmentResponse>('POST', `/api/users/${userId}/mfa/totp/enrollment`),

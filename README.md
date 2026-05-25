@@ -169,6 +169,8 @@ The Admin Console is organized around relationship-aware IAM workflows:
 - Manage tenant-owned applications/resource servers and their application
   permissions. These application permissions are separate from the system IAM
   permissions that protect this platform's Admin APIs.
+- Link OAuth2 clients to tenant applications and allow selected application
+  permissions as client-requestable scopes.
 - Review direct roles, group-derived roles, effective roles, and effective
   permissions on the user detail page.
 - Add and remove group members from the group detail page using tenant user
@@ -268,9 +270,10 @@ permissions cannot be created manually through the API.
 Tenant-owned applications are modeled separately as resource servers. A
 resource server belongs to a tenant and has its own application permissions,
 such as `payroll.employee.read` or `crm.customer.read`. These application
-permissions describe capabilities exposed by business applications; they are
-not Admin API permissions and are not enforced as a full external policy engine
-yet. Random database
+permissions describe capabilities exposed by business applications. OAuth2
+clients can optionally link to a resource server and be allowed selected
+application permissions as requestable OAuth2 scopes. These are not Admin API
+permissions and are not enforced as a full external policy engine yet. Random database
 permission strings do not grant Admin API access unless they are part of the
 recognized built-in catalog. Client-credentials tokens, including local
 development service clients, do not bypass Admin RBAC; they need an explicit

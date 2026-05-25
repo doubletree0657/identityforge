@@ -264,6 +264,8 @@ Completed slices:
 - Resource Server / Application foundation: tenant-owned applications have
   separate application permissions for future business-resource authorization,
   while system IAM permissions remain global Admin API capabilities.
+- OAuth2 clients can optionally link to a tenant resource server and allow
+  selected application permissions as future OAuth2 application scopes.
 - Clearer user lifecycle controls for `PENDING`, `ACTIVE`, `DISABLED`, and
   `LOCKED`, plus status-change audit events.
 - TOTP enrollment UX with one-time setup secret display, `otpauth://` URI, and
@@ -275,7 +277,6 @@ Candidate slices:
 - Production authentication and session model.
 - Machine-admin authorization for service clients that need non-SCIM Admin API
   access.
-- OAuth2 client association with resource servers.
 - Full policy engine design and external application token enforcement.
 - Safe delete/archive workflows where domain ownership and cascade behavior are
   explicitly designed.
