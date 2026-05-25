@@ -13,7 +13,9 @@ import io.github.doubletree.iam.platform.repository.PermissionRepository;
 import io.github.doubletree.iam.platform.repository.RoleRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
+import io.github.doubletree.iam.platform.security.BuiltInPermission;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -34,6 +36,8 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     static final String ADMIN_CONSOLE_CLIENT_ID = "iam-admin-console";
     static final String ADMIN_CONSOLE_CLIENT_NAME = "IAM Admin Console";
     static final String ADMIN_ROLE_NAME = "platform-admin";
+    static final String TENANT_ADMIN_ROLE_NAME = "tenant-admin";
+    static final String AUDITOR_ROLE_NAME = "auditor";
     static final String ADMIN_DISPLAY_NAME = "Development Super Admin";
     private static final String DEVELOPMENT_CLIENT_SECRET = "secret";
 
@@ -47,19 +51,6 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     private static final Set<String> ADMIN_CONSOLE_GRANT_TYPES = Set.of("authorization_code");
     private static final Set<String> ADMIN_CONSOLE_SCOPES = Set.of("iam.read", "iam.write", "openid", "profile");
     private static final Set<String> ADMIN_CONSOLE_AUTHENTICATION_METHODS = Set.of("none");
-    private static final Set<String> ADMIN_PERMISSIONS = Set.of(
-            "iam.tenants.read",
-            "iam.tenants.write",
-            "iam.users.read",
-            "iam.users.write",
-            "iam.groups.read",
-            "iam.groups.write",
-            "iam.roles.read",
-            "iam.roles.write",
-            "iam.clients.read",
-            "iam.clients.write",
-            "iam.audit.read");
-
     private final TenantRepository tenantRepository;
     private final ClientRepository clientRepository;
     private final UserRepository userRepository;
@@ -118,6 +109,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
                     .ifPresent(this::refreshDevelopmentClient);
         }
         initializeAdminConsoleClient(tenant);
+        initializeBuiltInPermissionsAndRoles(tenant);
         if (adminBootstrapEnabled) {
             initializeAdminUser(tenant);
         }
@@ -183,13 +175,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
 
     private void initializeAdminUser(Tenant tenant) {
         Role adminRole = roleRepository.findByTenantIdAndName(tenant.getId(), ADMIN_ROLE_NAME)
-                .orElseGet(() -> roleRepository.save(Role.create(tenant, ADMIN_ROLE_NAME)));
-        Role roleToUpdate = adminRole;
-        ADMIN_PERMISSIONS.stream()
-                .map(permissionName -> permissionRepository.findByTenantIdAndName(tenant.getId(), permissionName)
-                        .orElseGet(() -> permissionRepository.save(Permission.create(tenant, permissionName))))
-                .forEach(permission -> roleToUpdate.getPermissions().add(permission));
-        adminRole = roleRepository.save(roleToUpdate);
+                .orElseThrow(() -> new IllegalStateException("Platform admin role template was not initialized"));
 
         User adminUser = userRepository.findByTenantIdAndUsername(tenant.getId(), adminUsername)
                 .orElseGet(() -> userApplicationService.createUser(tenant.getId(), adminUsername, ADMIN_DISPLAY_NAME));
@@ -198,5 +184,40 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
         if (adminUser.getPasswordCredential() == null || resetAdminPassword) {
             userApplicationService.setInitialPassword(adminUser.getId(), adminPassword);
         }
+    }
+
+    private void initializeBuiltInPermissionsAndRoles(Tenant tenant) {
+        Map<String, Permission> permissions = new java.util.LinkedHashMap<>();
+        for (BuiltInPermission builtInPermission : BuiltInPermission.values()) {
+            Permission permission = permissionRepository.findByTenantIdAndName(
+                            tenant.getId(), builtInPermission.permissionName())
+                    .orElseGet(() -> Permission.system(
+                            tenant,
+                            builtInPermission.permissionName(),
+                            builtInPermission.displayName(),
+                            builtInPermission.description(),
+                            builtInPermission.category()));
+            permission.setDisplayName(builtInPermission.displayName());
+            permission.setDescription(builtInPermission.description());
+            permission.setCategory(builtInPermission.category());
+            permission.setSystemManaged(true);
+            permissions.put(builtInPermission.permissionName(), permissionRepository.save(permission));
+        }
+        initializeRoleTemplate(tenant, ADMIN_ROLE_NAME, BuiltInPermission.platformAdminNames(), permissions);
+        initializeRoleTemplate(tenant, TENANT_ADMIN_ROLE_NAME, BuiltInPermission.tenantAdminNames(), permissions);
+        initializeRoleTemplate(tenant, AUDITOR_ROLE_NAME, BuiltInPermission.auditorNames(), permissions);
+    }
+
+    private void initializeRoleTemplate(
+            Tenant tenant,
+            String roleName,
+            Set<String> permissionNames,
+            Map<String, Permission> permissions) {
+        Role role = roleRepository.findByTenantIdAndName(tenant.getId(), roleName)
+                .orElseGet(() -> roleRepository.save(Role.create(tenant, roleName)));
+        permissionNames.stream()
+                .map(permissions::get)
+                .forEach(role.getPermissions()::add);
+        roleRepository.save(role);
     }
 }

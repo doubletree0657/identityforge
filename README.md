@@ -164,7 +164,7 @@ The Admin Console is organized around relationship-aware IAM workflows:
 - A user belongs to one tenant, does not have to belong to a group, and can
   belong to many groups. Groups are optional organizational containers.
 - Assign roles directly to users, assign roles to groups, and attach
-  permissions to roles using tenant-scoped selectors.
+  system-defined IAM permissions to roles using tenant-scoped selectors.
 - Review direct roles, group-derived roles, effective roles, and effective
   permissions on the user detail page.
 - Add and remove group members from the group detail page using tenant user
@@ -231,6 +231,29 @@ Local user access tokens include stable authorization claims: `user_id`,
 effective permissions. Service-client SCIM access remains scope-based under
 `/scim/v2/**`; service-client Admin API access should use an explicit future
 machine-admin model rather than React client secrets.
+
+Admin API authorization uses a system permission catalog seeded by the backend,
+not arbitrary strings typed in the Admin Console. Built-in IAM permissions
+include:
+
+- `iam.tenants.read`, `iam.tenants.write`
+- `iam.users.read`, `iam.users.write`
+- `iam.groups.read`, `iam.groups.write`
+- `iam.roles.read`, `iam.roles.write`
+- `iam.permissions.read`, `iam.permissions.write`
+- `iam.clients.read`, `iam.clients.write`
+- `iam.audit.read`
+- `iam.mfa.manage`
+- `iam.admin`
+
+Each seeded permission records display name, description, category, and
+`systemManaged`. The `platform-admin` template receives all built-in
+permissions, `tenant-admin` receives tenant-scoped management permissions, and
+`auditor` receives read-only permissions. Reserved `iam.*` permissions cannot be
+created manually through the API; future custom application permissions should
+live outside this reserved IAM namespace. Random database permission strings do
+not grant Admin API access unless they are part of the recognized built-in
+catalog.
 
 Role and permission resolution is additive and de-duplicated:
 

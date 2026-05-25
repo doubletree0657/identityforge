@@ -57,8 +57,8 @@ export function RolesPage() {
 
   return (
     <>
-      <PageHeader title="Roles" description="Create roles and attach tenant-scoped permissions." />
-      {!selectedTenantId && <TenantRequired label="Roles are tenant scoped. Select a tenant to create roles and assign permissions." />}
+      <PageHeader title="Roles" description="Create roles and attach known IAM permissions from the seeded catalog." />
+      {!selectedTenantId && <TenantRequired label="Roles are tenant scoped. Select a tenant to load role templates and the permission catalog." />}
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
         <Card title="Create role">
           {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant in the header before creating roles.</p>}
@@ -93,7 +93,7 @@ export function RolesPage() {
                               onClick={() => removePermission.mutate({ roleId: role.id, permissionId })}
                               className="rounded-full border border-line bg-slate-50 px-2 py-1 text-xs text-slate-700"
                             >
-                              {permission?.name ?? permissionId} ×
+                              {permission?.displayName ?? permission?.name ?? permissionId} ×
                             </button>
                           );
                         })}
@@ -120,7 +120,11 @@ export function RolesPage() {
                       >
                         <Select name="permissionId" className="flex-1">
                           <option value="">Select permission</option>
-                          {permissions.data?.items.map((permission) => <option key={permission.id} value={permission.id}>{permission.name}</option>)}
+                          {permissions.data?.items.map((permission) => (
+                            <option key={permission.id} value={permission.id}>
+                              {permission.displayName || permission.name}
+                            </option>
+                          ))}
                         </Select>
                         <Button type="submit" variant="secondary">Assign</Button>
                       </form>

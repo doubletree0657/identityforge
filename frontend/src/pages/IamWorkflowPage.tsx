@@ -8,7 +8,7 @@ const steps = [
   { label: 'Select tenant', path: '/tenants', detail: 'Pick a tenant from the global header selector.' },
   { label: 'Create user', path: '/users', detail: 'Create a tenant user, then open the user detail page.' },
   { label: 'Set password', path: '/users', detail: 'Use the Password card on the user detail page.' },
-  { label: 'Create permission', path: '/permissions', detail: 'Create a tenant permission such as users:read.' },
+  { label: 'Review permission catalog', path: '/permissions', detail: 'Use seeded IAM permissions instead of creating arbitrary strings.' },
   { label: 'Create role', path: '/roles', detail: 'Create a role in the same tenant.' },
   { label: 'Assign permission to role', path: '/roles', detail: 'Use the permission selector on the Roles page.' },
   { label: 'Assign role to user', path: '/users', detail: 'Use the role selector on the user detail page.' },
@@ -42,8 +42,8 @@ export function IamWorkflowPage() {
           <div className="grid gap-2 text-sm text-slate-700">
             <p>A user always belongs to exactly one tenant.</p>
             <p>Groups are optional organizational containers; a user can be in zero, one, or many groups.</p>
-            <p>Roles are assigned directly to users in this version. Role-to-group assignment remains future work.</p>
-            <p>Permissions attach to roles, and OAuth2 clients belong to the selected tenant.</p>
+            <p>Roles can be assigned directly to users or to groups.</p>
+            <p>System IAM permissions attach to roles, and OAuth2 clients belong to the selected tenant.</p>
           </div>
         </Card>
       </div>

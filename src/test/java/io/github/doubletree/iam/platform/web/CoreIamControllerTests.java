@@ -142,6 +142,22 @@ class CoreIamControllerTests {
                     .claim("scope", "iam.read"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
 
+    private final RequestPostProcessor usersReadPermissionJwt = jwt()
+            .jwt(token -> token
+                    .claim("tenant_id", TENANT_ID.toString())
+                    .claim("effective_roles", List.of())
+                    .claim("effective_permissions", List.of("iam.users.read"))
+                    .claim("scope", "iam.read"))
+            .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
+
+    private final RequestPostProcessor fakePermissionJwt = jwt()
+            .jwt(token -> token
+                    .claim("tenant_id", TENANT_ID.toString())
+                    .claim("effective_roles", List.of())
+                    .claim("effective_permissions", List.of("iam.fake.admin"))
+                    .claim("scope", "iam.read"))
+            .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
+
     @Test
     void currentUserRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/me"))
@@ -321,6 +337,26 @@ class CoreIamControllerTests {
                 .andExpect(jsonPath("$.items[0].id").value(USER_ID.toString()))
                 .andExpect(jsonPath("$.items[0].passwordHash").doesNotExist())
                 .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    @Test
+    void validAdminPermissionCanReadExpectedApiPath() throws Exception {
+        when(userApplicationService.listUsers(eq(TENANT_ID), any(Pageable.class)))
+                .thenReturn(pageOf(user("alice", "Alice Example")));
+
+        mockMvc.perform(get("/api/users")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(usersReadPermissionJwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].username").value("alice"));
+    }
+
+    @Test
+    void fakeIamPermissionCannotAccessAdminApi() throws Exception {
+        mockMvc.perform(get("/api/users")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(fakePermissionJwt))
+                .andExpect(status().isForbidden());
     }
 
     @Test

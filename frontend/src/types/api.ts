@@ -106,6 +106,10 @@ export interface PermissionResponse {
   id: string;
   tenantId: string;
   name: string;
+  displayName: string;
+  description?: string;
+  category: string;
+  systemManaged: boolean;
   createdAt: string;
   updatedAt: string;
 }

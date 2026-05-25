@@ -1,70 +1,90 @@
-import { FormEvent, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '../api/adminApi';
-import { Button } from '../components/Button';
+import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
-import { Field, Input } from '../components/Form';
-import { Pagination } from '../components/Pagination';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { TenantRequired } from '../components/TenantRequired';
 import { useTenantContext } from '../context/TenantContext';
+import { PermissionResponse } from '../types/api';
 import { PageHeader } from './PageHeader';
 
 export function PermissionsPage() {
-  const [page, setPage] = useState(0);
-  const { selectedTenantId, selectedTenant } = useTenantContext();
-  const queryClient = useQueryClient();
+  const { selectedTenantId } = useTenantContext();
   const permissions = useQuery({
-    queryKey: ['permissions', page, selectedTenantId],
-    queryFn: () => adminApi.permissions.list({ page, size: 20, tenantId: selectedTenantId }),
+    queryKey: ['permissions-catalog', selectedTenantId],
+    queryFn: () => adminApi.permissions.list({ size: 100, tenantId: selectedTenantId }),
     enabled: !!selectedTenantId,
   });
-  const createPermission = useMutation({
-    mutationFn: adminApi.permissions.create,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['permissions'] }),
+  const roles = useQuery({
+    queryKey: ['roles-for-permission-catalog', selectedTenantId],
+    queryFn: () => adminApi.roles.list({ size: 100, tenantId: selectedTenantId }),
+    enabled: !!selectedTenantId,
   });
 
-  function create(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    createPermission.mutate({ tenantId: selectedTenantId, name: String(form.get('name') ?? '') });
-    event.currentTarget.reset();
-  }
+  const categories = groupByCategory(permissions.data?.items ?? []);
 
   return (
     <>
-      <PageHeader title="Permissions" description="Create named capabilities that can be attached to roles." />
-      {!selectedTenantId && <TenantRequired label="Permissions are tenant scoped and become useful when attached to roles." />}
-      <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-        <Card title="Create permission">
-          {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant in the header before creating permissions.</p>}
-          <form onSubmit={create} className="grid gap-3">
-            <Field label="Tenant"><Input value={selectedTenant?.name ?? 'No tenant selected'} disabled /></Field>
-            <Field label="Name"><Input name="name" placeholder="users:read" required /></Field>
-            <Button type="submit" disabled={!selectedTenantId}>Create</Button>
-            {createPermission.isError && <ErrorState error={createPermission.error} />}
-          </form>
+      <PageHeader title="Permission Catalog" description="System IAM permissions are seeded by the backend and assigned to roles from this catalog." />
+      {!selectedTenantId && <TenantRequired label="Select a tenant to view its seeded IAM permission catalog." />}
+      {!selectedTenantId && (
+        <Card title="Catalog">
+          <p className="text-sm text-slate-600">Permissions are tenant-scoped records, but IAM permission names are system-defined.</p>
         </Card>
-        <Card title="Permissions">
-          {!selectedTenantId && <p className="text-sm text-slate-600">Select a tenant to load its permissions.</p>}
-          {permissions.isLoading && <LoadingState />}
-          {permissions.isError && <ErrorState error={permissions.error} />}
-          {permissions.data && (
-            <>
+      )}
+      {permissions.isLoading && <LoadingState />}
+      {permissions.isError && <ErrorState error={permissions.error} />}
+      {permissions.data && (
+        <div className="grid gap-4">
+          {Object.entries(categories).map(([category, items]) => (
+            <Card key={category} title={category}>
               <DataTable
-                items={permissions.data.items}
+                items={items}
                 columns={[
-                  { header: 'Name', render: (permission) => <span className="font-medium">{permission.name}</span> },
-                  { header: 'Tenant', render: (permission) => <span className="font-mono text-xs">{permission.tenantId}</span> },
-                  { header: 'ID', render: (permission) => <span className="font-mono text-xs">{permission.id}</span> },
+                  {
+                    header: 'Permission',
+                    render: (permission) => (
+                      <div>
+                        <div className="font-medium">{permission.displayName || permission.name}</div>
+                        <div className="font-mono text-xs text-slate-500">{permission.name}</div>
+                      </div>
+                    ),
+                  },
+                  { header: 'Description', render: (permission) => permission.description || '-' },
+                  {
+                    header: 'Managed',
+                    render: (permission) => <Badge>{permission.systemManaged ? 'SYSTEM' : 'CUSTOM'}</Badge>,
+                  },
+                  {
+                    header: 'Used by roles',
+                    render: (permission) => {
+                      const roleNames = roles.data?.items
+                        .filter((role) => role.permissionIds.includes(permission.id))
+                        .map((role) => role.name) ?? [];
+                      return roleNames.length === 0 ? (
+                        <span className="text-sm text-slate-500">No roles</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {roleNames.map((roleName) => <Badge key={roleName}>{roleName}</Badge>)}
+                        </div>
+                      );
+                    },
+                  },
                 ]}
               />
-              <Pagination page={permissions.data} onPageChange={setPage} />
-            </>
-          )}
-        </Card>
-      </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </>
   );
+}
+
+function groupByCategory(permissions: PermissionResponse[]) {
+  return permissions.reduce<Record<string, PermissionResponse[]>>((groups, permission) => {
+    const category = permission.category || 'Custom';
+    groups[category] = [...(groups[category] ?? []), permission];
+    return groups;
+  }, {});
 }

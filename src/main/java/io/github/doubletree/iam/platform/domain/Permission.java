@@ -28,6 +28,15 @@ public class Permission {
     @Column(nullable = false)
     private String name;
 
+    private String displayName;
+
+    private String description;
+
+    private String category;
+
+    @Column(nullable = false)
+    private boolean systemManaged;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "tenant_id", nullable = false)
     private Tenant tenant;
@@ -45,6 +54,17 @@ public class Permission {
         Permission permission = new Permission();
         permission.setTenant(tenant);
         permission.setName(name);
+        permission.setDisplayName(name);
+        permission.setCategory("Custom");
+        return permission;
+    }
+
+    public static Permission system(Tenant tenant, String name, String displayName, String description, String category) {
+        Permission permission = create(tenant, name);
+        permission.setDisplayName(displayName);
+        permission.setDescription(description);
+        permission.setCategory(category);
+        permission.setSystemManaged(true);
         return permission;
     }
 
@@ -67,6 +87,38 @@ public class Permission {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getDisplayName() {
+        return displayName == null ? name : displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getCategory() {
+        return category == null ? "Custom" : category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
+    }
+
+    public boolean isSystemManaged() {
+        return systemManaged;
+    }
+
+    public void setSystemManaged(boolean systemManaged) {
+        this.systemManaged = systemManaged;
     }
 
     public Tenant getTenant() {
