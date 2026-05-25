@@ -3,6 +3,7 @@ import { AuthGate } from '../layout/AuthGate';
 import { AdminLayout } from '../layout/AdminLayout';
 import { TenantProvider } from '../context/TenantContext';
 import { AccessDeniedPage } from '../pages/AccessDeniedPage';
+import { ApplicationsPage } from '../pages/ApplicationsPage';
 import { AuditLogsPage } from '../pages/AuditLogsPage';
 import { ClientsPage } from '../pages/ClientsPage';
 import { DashboardPage } from '../pages/DashboardPage';
@@ -34,6 +35,7 @@ export const routes: RouteObject[] = [
       { path: '/groups/:groupId', element: <GroupDetailPage /> },
       { path: '/roles', element: <RolesPage /> },
       { path: '/permissions', element: <PermissionsPage /> },
+      { path: '/applications', element: <ApplicationsPage /> },
       { path: '/clients', element: <ClientsPage /> },
       { path: '/mfa', element: <MfaPage /> },
       { path: '/audit-logs', element: <AuditLogsPage /> },

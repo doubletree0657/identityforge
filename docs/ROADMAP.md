@@ -15,8 +15,9 @@ The codebase currently includes:
 
 - Java 21 and Spring Boot backend structure.
 - IAM entities for tenants, users, user profiles, password credentials, custom
-  attributes, clients, roles, permissions, groups, group membership, and audit
-  events.
+  attributes, clients, tenant-scoped roles, global system IAM permissions,
+  resource servers, application permissions, groups, group membership, and
+  audit events.
 - A pre-release Flyway schema reset with a single baseline migration before the
   first stable release.
 - JPA repositories and Testcontainers-backed persistence tests.
@@ -27,8 +28,9 @@ The codebase currently includes:
 - OAuth2 client management APIs for safe creation, update, and confidential
   client secret rotation.
 - Backend Admin APIs for a future React Admin Console, covering tenants, users,
-  profiles, custom attributes, groups, roles, permissions, OAuth2 clients, TOTP
-  operations, and audit log queries.
+  profiles, custom attributes, groups, roles, system IAM permissions,
+  applications/resource servers, OAuth2 clients, TOTP operations, and audit log
+  queries.
 - Hardened Admin API contracts with paginated responses, bounded page sizes,
   stronger request validation, safer default user profile reads, tenant slug
   uniqueness checks, and cleaner validation errors.
@@ -50,9 +52,9 @@ The codebase currently includes:
   integration, OAuth2 Authorization Code + PKCE login through the backend,
   productized resource management screens, global tenant context with
   auto-selection for single-tenant local development, relationship-aware
-  user-role, group-member, role-permission, OAuth2 client, MFA, audit log
-  workflows, an IAM workflow demo page, and an OAuth2 authorization-code demo
-  helper.
+  user-role, group-member, role-permission, application permission, OAuth2
+  client, MFA, audit log workflows, an IAM workflow demo page, and an OAuth2
+  authorization-code demo helper.
 
 The browser login and consent experience is now demonstrable for local IAM
 flows. It is still not a full production session product and should be hardened
@@ -214,7 +216,8 @@ Completed slices:
   reusable tables/pagination.
 - Dashboard overview backed by paginated Admin APIs.
 - Tenant, user, user detail, profile, attribute, group, role, permission,
-  OAuth2 client, MFA, and audit log management screens.
+  application/resource server, OAuth2 client, MFA, and audit log management
+  screens.
 - Global tenant selector stored in local storage and used as the default context
   for tenant-scoped users, groups, roles, OAuth2 clients, MFA actions, and audit
   logs. The permission catalog is global.
@@ -258,6 +261,9 @@ Completed slices:
 - Tenant-scoped role templates for `platform-admin`, `tenant-admin`, and
   `auditor` that reference global permissions instead of duplicating
   permissions per tenant.
+- Resource Server / Application foundation: tenant-owned applications have
+  separate application permissions for future business-resource authorization,
+  while system IAM permissions remain global Admin API capabilities.
 - Clearer user lifecycle controls for `PENDING`, `ACTIVE`, `DISABLED`, and
   `LOCKED`, plus status-change audit events.
 - TOTP enrollment UX with one-time setup secret display, `otpauth://` URI, and
@@ -269,10 +275,8 @@ Candidate slices:
 - Production authentication and session model.
 - Machine-admin authorization for service clients that need non-SCIM Admin API
   access.
-- Custom external application permission management outside the reserved IAM
-  namespace, modeled separately as tenant plus application/resource-server
-  capabilities.
-- Full policy engine design.
+- OAuth2 client association with resource servers.
+- Full policy engine design and external application token enforcement.
 - Safe delete/archive workflows where domain ownership and cascade behavior are
   explicitly designed.
 - Designed login, consent, and MFA challenge screens.

@@ -2,6 +2,7 @@ export type TenantStatus = 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
 export type AccountStatus = 'ACTIVE' | 'DISABLED' | 'LOCKED' | 'PENDING';
 export type ClientType = 'CONFIDENTIAL' | 'PUBLIC';
 export type ClientStatus = 'ACTIVE' | 'DISABLED';
+export type ResourceServerStatus = 'ACTIVE' | 'DISABLED';
 export type UserAttributeValueType = 'STRING' | 'NUMBER' | 'BOOLEAN' | 'JSON';
 export type AuditActorType = 'API_CLIENT' | 'USER' | 'SYSTEM';
 export type AuditResult = 'SUCCESS' | 'FAILURE';
@@ -109,6 +110,27 @@ export interface PermissionResponse {
   description?: string;
   category: string;
   systemManaged: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResourceServerResponse {
+  id: string;
+  tenantId: string;
+  identifier: string;
+  name: string;
+  description?: string;
+  status: ResourceServerStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResourcePermissionResponse {
+  id: string;
+  resourceServerId: string;
+  name: string;
+  displayName: string;
+  description?: string;
   createdAt: string;
   updatedAt: string;
 }

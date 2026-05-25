@@ -47,14 +47,16 @@ TypeScript Admin Console under `frontend/`, and a GitLab CI pipeline.
 
 The Admin API surface is completed and hardened for frontend consumption.
 Current management APIs cover tenants, users, profiles, custom user attributes,
-groups, roles, permissions, OAuth2 clients, MFA enrollment operations, and audit
-log queries with paginated list responses, practical validation, safer default
+groups, roles, system IAM permissions, tenant-owned applications/resource
+servers, application permissions, OAuth2 clients, MFA enrollment operations,
+and audit log queries with paginated list responses, practical validation, safer default
 profile handling, consistent validation errors, and safe response DTOs that
 avoid exposing password hashes, TOTP secret material, and client secret hashes.
 The Admin Console demonstrates those APIs through real backend calls and a
 development bearer-token panel. It now has a global tenant selector that is
-used by tenant-scoped screens for users, groups, roles, OAuth2 clients, MFA
-operations, and audit logs, while permissions remain a global catalog.
+used by tenant-scoped screens for users, groups, roles, applications, OAuth2
+clients, MFA operations, and audit logs, while system IAM permissions remain a
+global catalog.
 
 The project has performed a pre-release Flyway schema reset toward a stronger
 identity model. The current baseline includes tenant status, richer user
@@ -164,6 +166,9 @@ The Admin Console is organized around relationship-aware IAM workflows:
   belong to many groups. Groups are optional organizational containers.
 - Assign roles directly to users, assign roles to groups, and attach global
   system IAM permissions to tenant roles from the permission catalog.
+- Manage tenant-owned applications/resource servers and their application
+  permissions. These application permissions are separate from the system IAM
+  permissions that protect this platform's Admin APIs.
 - Review direct roles, group-derived roles, effective roles, and effective
   permissions on the user detail page.
 - Add and remove group members from the group detail page using tenant user
@@ -247,6 +252,7 @@ for every tenant. Built-in IAM permissions include:
 - `iam.groups.read`, `iam.groups.write`
 - `iam.roles.read`, `iam.roles.write`
 - `iam.permissions.read`, `iam.permissions.write`
+- `iam.resource-servers.read`, `iam.resource-servers.write`
 - `iam.clients.read`, `iam.clients.write`
 - `iam.audit.read`
 - `iam.mfa.manage`
@@ -257,10 +263,14 @@ Each seeded permission records display name, description, category, and
 reference the global catalog immediately: `platform-admin` receives all
 built-in permissions, `tenant-admin` receives tenant-scoped management
 permissions, and `auditor` receives read-only permissions. Reserved `iam.*`
-permissions cannot be created manually through the API. Future custom
-application permissions should be modeled separately as tenant plus
-application/resource-server capabilities and remain separate from IAM Admin API
-permissions. Random database
+permissions cannot be created manually through the API.
+
+Tenant-owned applications are modeled separately as resource servers. A
+resource server belongs to a tenant and has its own application permissions,
+such as `payroll.employee.read` or `crm.customer.read`. These application
+permissions describe capabilities exposed by business applications; they are
+not Admin API permissions and are not enforced as a full external policy engine
+yet. Random database
 permission strings do not grant Admin API access unless they are part of the
 recognized built-in catalog. Client-credentials tokens, including local
 development service clients, do not bypass Admin RBAC; they need an explicit

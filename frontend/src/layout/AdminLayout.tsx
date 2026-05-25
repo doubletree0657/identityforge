@@ -1,5 +1,6 @@
 import {
   Activity,
+  AppWindow,
   Building2,
   KeyRound,
   LayoutDashboard,
@@ -25,6 +26,7 @@ const navItems = [
   { to: '/groups', label: 'Groups', icon: Users },
   { to: '/roles', label: 'Roles', icon: ShieldCheck },
   { to: '/permissions', label: 'Permissions', icon: ListChecks },
+  { to: '/applications', label: 'Applications', icon: AppWindow },
   { to: '/clients', label: 'OAuth2 Clients', icon: KeyRound },
   { to: '/mfa', label: 'MFA', icon: LockKeyhole },
   { to: '/audit-logs', label: 'Audit Logs', icon: Activity },

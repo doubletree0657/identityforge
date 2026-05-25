@@ -18,6 +18,9 @@ import io.github.doubletree.iam.platform.domain.ClientType;
 import io.github.doubletree.iam.platform.domain.Group;
 import io.github.doubletree.iam.platform.domain.PasswordCredential;
 import io.github.doubletree.iam.platform.domain.Permission;
+import io.github.doubletree.iam.platform.domain.ResourcePermission;
+import io.github.doubletree.iam.platform.domain.ResourceServer;
+import io.github.doubletree.iam.platform.domain.ResourceServerStatus;
 import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.TotpCredential;
@@ -28,6 +31,8 @@ import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.repository.GroupRepository;
 import io.github.doubletree.iam.platform.repository.PasswordCredentialRepository;
 import io.github.doubletree.iam.platform.repository.PermissionRepository;
+import io.github.doubletree.iam.platform.repository.ResourcePermissionRepository;
+import io.github.doubletree.iam.platform.repository.ResourceServerRepository;
 import io.github.doubletree.iam.platform.repository.RoleRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.TotpCredentialRepository;
@@ -40,6 +45,8 @@ import io.github.doubletree.iam.platform.web.dto.UserResponse;
 import java.lang.reflect.RecordComponent;
 import java.time.Instant;
 import java.util.Set;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -50,6 +57,9 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -67,6 +77,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         ClientApplicationService.class,
         GroupApplicationService.class,
         SystemPermissionCatalogService.class,
+        ResourceServerApplicationService.class,
         AuditApplicationService.class,
         AdminAuthorizationService.class,
         PasswordEncodingConfiguration.class,
@@ -100,6 +111,9 @@ class ApplicationServiceTests {
     private MfaApplicationService mfaApplicationService;
 
     @Autowired
+    private ResourceServerApplicationService resourceServerApplicationService;
+
+    @Autowired
     private SecretEncryptionService secretEncryptionService;
 
     @Autowired
@@ -111,11 +125,22 @@ class ApplicationServiceTests {
     @Autowired
     private UserRepository userRepository;
 
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Autowired
     private RoleRepository roleRepository;
 
     @Autowired
     private PermissionRepository permissionRepository;
+
+    @Autowired
+    private ResourceServerRepository resourceServerRepository;
+
+    @Autowired
+    private ResourcePermissionRepository resourcePermissionRepository;
 
     @Autowired
     private ClientRepository clientRepository;
@@ -561,10 +586,113 @@ class ApplicationServiceTests {
                 secondTenant.getId(), SystemPermissionCatalogService.TENANT_ADMIN_ROLE_NAME).orElseThrow();
 
         assertThat(permissionRepository.findBySystemManagedTrue(org.springframework.data.domain.Pageable.unpaged())
-                .getContent()).hasSize(15);
+                .getContent()).hasSize(17);
         assertThat(firstTenantAdmin.getPermissions())
                 .extracting(Permission::getId)
                 .containsAll(secondTenantAdmin.getPermissions().stream().map(Permission::getId).toList());
+    }
+
+    @Test
+    void createsAndListsResourceServersByTenant() {
+        Tenant tenant = tenantApplicationService.createTenant("Resource Server Tenant");
+        Tenant otherTenant = tenantApplicationService.createTenant("Other Resource Server Tenant");
+
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "payroll-api", "Payroll API", "Payroll capabilities");
+        resourceServerApplicationService.createResourceServer(
+                otherTenant.getId(), "crm-api", "CRM API", "CRM capabilities");
+
+        assertThat(resourceServer.getTenant().getId()).isEqualTo(tenant.getId());
+        assertThat(resourceServerApplicationService.listResourceServers(
+                        tenant.getId(), org.springframework.data.domain.Pageable.unpaged()).getContent())
+                .extracting(ResourceServer::getIdentifier)
+                .containsExactly("payroll-api");
+    }
+
+    @Test
+    void resourceServerTenantBoundaryPreventsCrossTenantAccess() {
+        Tenant tenant = tenantApplicationService.createTenant("Resource Boundary Tenant");
+        Tenant otherTenant = tenantApplicationService.createTenant("Other Resource Boundary Tenant");
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                otherTenant.getId(), "other-api", "Other API", null);
+        authenticateTenantAdmin(tenant.getId());
+
+        assertThatThrownBy(() -> resourceServerApplicationService.findResourceServer(resourceServer.getId()))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class)
+                .hasMessage("Tenant administrators can only access their own tenant");
+    }
+
+    @Test
+    void createsResourcePermissionUnderResourceServer() {
+        Tenant tenant = tenantApplicationService.createTenant("Resource Permission Tenant");
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "payroll-permissions", "Payroll Permissions", null);
+
+        ResourcePermission permission = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "payroll.employee.read", "Read employees", "Read employee records");
+
+        assertThat(permission.getResourceServer().getId()).isEqualTo(resourceServer.getId());
+        assertThat(resourceServerApplicationService.listResourcePermissions(resourceServer.getId()))
+                .extracting(ResourcePermission::getName)
+                .containsExactly("payroll.employee.read");
+        assertThat(auditLogRepository.findByAction("RESOURCE_PERMISSION_CREATED"))
+                .singleElement()
+                .satisfies(auditLog -> {
+                    assertThat(auditLog.getTenantId()).isEqualTo(tenant.getId());
+                    assertThat(auditLog.getResourceId()).isEqualTo(permission.getId());
+                    assertAuditLogDoesNotContain(auditLog, "secret");
+                });
+    }
+
+    @Test
+    void duplicateResourcePermissionNameInSameResourceServerIsRejected() {
+        Tenant tenant = tenantApplicationService.createTenant("Duplicate Resource Permission Tenant");
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "duplicate-permissions", "Duplicate Permissions", null);
+        resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "payroll.employee.read", "Read employees", null);
+
+        assertThatThrownBy(() -> resourceServerApplicationService.createResourcePermission(
+                        resourceServer.getId(), "payroll.employee.read", "Read employees again", null))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("Resource permission name already exists in resource server: payroll.employee.read");
+    }
+
+    @Test
+    void sameResourcePermissionNameInDifferentResourceServersIsAllowed() {
+        Tenant tenant = tenantApplicationService.createTenant("Shared Resource Permission Tenant");
+        ResourceServer payroll = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "payroll-shared", "Payroll Shared", null);
+        ResourceServer crm = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "crm-shared", "CRM Shared", null);
+
+        resourceServerApplicationService.createResourcePermission(
+                payroll.getId(), "common.read", "Read", null);
+        resourceServerApplicationService.createResourcePermission(
+                crm.getId(), "common.read", "Read", null);
+
+        assertThat(resourcePermissionRepository.findAll())
+                .extracting(ResourcePermission::getName)
+                .containsExactlyInAnyOrder("common.read", "common.read");
+    }
+
+    @Test
+    void resourceServerLifecycleWritesAuditEventsWithoutSecrets() {
+        Tenant tenant = tenantApplicationService.createTenant("Resource Audit Tenant");
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                tenant.getId(), "audit-api", "Audit API", "no secrets here");
+
+        resourceServerApplicationService.updateResourceServer(
+                resourceServer.getId(), "audit-api-v2", "Audit API v2", "updated", ResourceServerStatus.ACTIVE);
+        resourceServerApplicationService.disableResourceServer(resourceServer.getId());
+        resourceServerApplicationService.reactivateResourceServer(resourceServer.getId());
+
+        assertThat(auditLogRepository.findByAction("RESOURCE_SERVER_CREATED")).hasSize(1);
+        assertThat(auditLogRepository.findByAction("RESOURCE_SERVER_UPDATED")).hasSize(1);
+        assertThat(auditLogRepository.findByAction("RESOURCE_SERVER_DISABLED")).hasSize(1);
+        assertThat(auditLogRepository.findByAction("RESOURCE_SERVER_REACTIVATED")).hasSize(1);
+        assertThat(resourceServerRepository.findById(resourceServer.getId()).orElseThrow().getStatus())
+                .isEqualTo(ResourceServerStatus.ACTIVE);
     }
 
     @Test
@@ -1078,5 +1206,19 @@ class ApplicationServiceTests {
         assertThat(auditLog.getAction()).doesNotContain(sensitiveValue);
         assertThat(auditLog.getResourceType()).doesNotContain(sensitiveValue);
         assertThat(auditLog.getResourceId().toString()).doesNotContain(sensitiveValue);
+    }
+
+    private void authenticateTenantAdmin(java.util.UUID tenantId) {
+        Jwt jwt = Jwt.withTokenValue("tenant-admin-resource-server-test")
+                .header("alg", "none")
+                .subject("tenant-admin")
+                .claim("tenant_id", tenantId.toString())
+                .claim("effective_roles", List.of("tenant-admin"))
+                .claim("effective_permissions", List.of(
+                        "iam.resource-servers.read",
+                        "iam.resource-servers.write"))
+                .claim("scope", "iam.read iam.write")
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
     }
 }

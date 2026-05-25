@@ -126,6 +126,31 @@ CREATE TABLE role_permissions (
     CONSTRAINT fk_role_permissions_permission FOREIGN KEY (permission_id) REFERENCES permissions (id) ON DELETE CASCADE
 );
 
+CREATE TABLE resource_servers (
+    id UUID PRIMARY KEY,
+    tenant_id UUID NOT NULL,
+    identifier VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_resource_servers_tenant_identifier UNIQUE (tenant_id, identifier),
+    CONSTRAINT fk_resource_servers_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+);
+
+CREATE TABLE resource_permissions (
+    id UUID PRIMARY KEY,
+    resource_server_id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_resource_permissions_server_name UNIQUE (resource_server_id, name),
+    CONSTRAINT fk_resource_permissions_server FOREIGN KEY (resource_server_id) REFERENCES resource_servers (id) ON DELETE CASCADE
+);
+
 CREATE TABLE groups (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,
@@ -219,6 +244,8 @@ CREATE INDEX idx_totp_credentials_user_id ON totp_credentials (user_id);
 CREATE INDEX idx_roles_tenant_id ON roles (tenant_id);
 CREATE INDEX idx_user_roles_role_id ON user_roles (role_id);
 CREATE INDEX idx_role_permissions_permission_id ON role_permissions (permission_id);
+CREATE INDEX idx_resource_servers_tenant_id ON resource_servers (tenant_id);
+CREATE INDEX idx_resource_permissions_server_id ON resource_permissions (resource_server_id);
 CREATE INDEX idx_groups_tenant_id ON groups (tenant_id);
 CREATE INDEX idx_group_memberships_user_id ON group_memberships (user_id);
 CREATE INDEX idx_group_roles_role_id ON group_roles (role_id);

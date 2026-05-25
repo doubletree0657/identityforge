@@ -27,6 +27,7 @@ import io.github.doubletree.iam.platform.application.exception.EntityNotFoundExc
 import io.github.doubletree.iam.platform.application.service.GroupApplicationService;
 import io.github.doubletree.iam.platform.application.service.MfaApplicationService;
 import io.github.doubletree.iam.platform.application.service.PermissionApplicationService;
+import io.github.doubletree.iam.platform.application.service.ResourceServerApplicationService;
 import io.github.doubletree.iam.platform.application.service.RoleApplicationService;
 import io.github.doubletree.iam.platform.application.service.TenantApplicationService;
 import io.github.doubletree.iam.platform.application.exception.TenantBoundaryViolationException;
@@ -41,6 +42,9 @@ import io.github.doubletree.iam.platform.domain.ClientType;
 import io.github.doubletree.iam.platform.domain.Group;
 import io.github.doubletree.iam.platform.domain.PasswordCredential;
 import io.github.doubletree.iam.platform.domain.Permission;
+import io.github.doubletree.iam.platform.domain.ResourcePermission;
+import io.github.doubletree.iam.platform.domain.ResourceServer;
+import io.github.doubletree.iam.platform.domain.ResourceServerStatus;
 import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.TenantStatus;
@@ -75,6 +79,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
         RoleController.class,
         PermissionController.class,
         ClientController.class,
+        ResourceServerController.class,
         GroupController.class,
         MfaController.class,
         AuditLogController.class,
@@ -94,6 +99,8 @@ class CoreIamControllerTests {
     private static final UUID GROUP_ID = UUID.fromString("00000000-0000-0000-0000-000000000006");
     private static final UUID ATTRIBUTE_ID = UUID.fromString("00000000-0000-0000-0000-000000000007");
     private static final UUID AUDIT_ID = UUID.fromString("00000000-0000-0000-0000-000000000008");
+    private static final UUID RESOURCE_SERVER_ID = UUID.fromString("00000000-0000-0000-0000-000000000010");
+    private static final UUID RESOURCE_PERMISSION_ID = UUID.fromString("00000000-0000-0000-0000-000000000011");
 
     @Autowired
     private MockMvc mockMvc;
@@ -112,6 +119,9 @@ class CoreIamControllerTests {
 
     @MockitoBean
     private ClientApplicationService clientApplicationService;
+
+    @MockitoBean
+    private ResourceServerApplicationService resourceServerApplicationService;
 
     @MockitoBean
     private GroupApplicationService groupApplicationService;
@@ -464,6 +474,155 @@ class CoreIamControllerTests {
                                 }
                                 """))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void resourceServersReadPermissionCanListApplications() throws Exception {
+        when(resourceServerApplicationService.listResourceServers(eq(TENANT_ID), any(Pageable.class)))
+                .thenReturn(pageOf(resourceServer("payroll-api", "Payroll API")));
+
+        mockMvc.perform(get("/api/resource-servers")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(adminJwt(Set.of(), Set.of("iam.resource-servers.read"), "iam.read")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].id").value(RESOURCE_SERVER_ID.toString()))
+                .andExpect(jsonPath("$.items[0].tenantId").value(TENANT_ID.toString()))
+                .andExpect(jsonPath("$.items[0].identifier").value("payroll-api"));
+    }
+
+    @Test
+    void auditorCanReadButCannotCreateResourceServers() throws Exception {
+        when(resourceServerApplicationService.listResourceServers(eq(TENANT_ID), any(Pageable.class)))
+                .thenReturn(pageOf(resourceServer("audit-api", "Audit API")));
+
+        RequestPostProcessor auditor = adminJwt(
+                Set.of("auditor"),
+                Set.of("iam.resource-servers.read"),
+                "iam.read iam.write");
+
+        mockMvc.perform(get("/api/resource-servers")
+                        .queryParam("tenantId", TENANT_ID.toString())
+                        .with(auditor))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/resource-servers")
+                        .with(auditor)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000001",
+                                  "identifier":"blocked-api",
+                                  "name":"Blocked API"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void tenantAdminCanManageOwnTenantResourceServers() throws Exception {
+        when(resourceServerApplicationService.createResourceServer(
+                        eq(TENANT_ID),
+                        eq("payroll-api"),
+                        eq("Payroll API"),
+                        eq("Payroll capabilities")))
+                .thenReturn(resourceServer("payroll-api", "Payroll API"));
+
+        mockMvc.perform(post("/api/resource-servers")
+                        .with(adminJwt(Set.of("tenant-admin"), Set.of("iam.resource-servers.write"), "iam.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000001",
+                                  "identifier":"payroll-api",
+                                  "name":"Payroll API",
+                                  "description":"Payroll capabilities"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.identifier").value("payroll-api"));
+    }
+
+    @Test
+    void tenantAdminCannotManageAnotherTenantsResourceServers() throws Exception {
+        when(resourceServerApplicationService.createResourceServer(
+                        eq(OTHER_TENANT_ID),
+                        eq("other-api"),
+                        eq("Other API"),
+                        any()))
+                .thenThrow(new AccessDeniedException("Tenant administrators can only access their own tenant"));
+
+        mockMvc.perform(post("/api/resource-servers")
+                        .with(adminJwt(Set.of("tenant-admin"), Set.of("iam.resource-servers.write"), "iam.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000009",
+                                  "identifier":"other-api",
+                                  "name":"Other API"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("access_denied"))
+                .andExpect(jsonPath("$.message").value("Tenant administrators can only access their own tenant"));
+    }
+
+    @Test
+    void platformAdminCanManageResourceServers() throws Exception {
+        ResourceServer resourceServer = resourceServer("platform-api", "Platform API");
+        resourceServer.setStatus(ResourceServerStatus.DISABLED);
+        when(resourceServerApplicationService.disableResourceServer(eq(RESOURCE_SERVER_ID)))
+                .thenReturn(resourceServer);
+
+        mockMvc.perform(post("/api/resource-servers/{resourceServerId}/disable", RESOURCE_SERVER_ID)
+                        .with(adminJwt(Set.of("platform-admin"), Set.of(), "iam.write")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DISABLED"));
+    }
+
+    @Test
+    void resourceServerWritePermissionIsRequiredForApplicationWrites() throws Exception {
+        mockMvc.perform(post("/api/resource-servers")
+                        .with(adminJwt(Set.of(), Set.of("iam.resource-servers.read"), "iam.read iam.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "tenantId":"00000000-0000-0000-0000-000000000001",
+                                  "identifier":"read-only-api",
+                                  "name":"Read Only API"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void managesResourcePermissionsUnderApplication() throws Exception {
+        ResourceServer resourceServer = resourceServer("payroll-api", "Payroll API");
+        ResourcePermission permission = resourcePermission(resourceServer, "payroll.employee.read");
+        when(resourceServerApplicationService.listResourcePermissions(eq(RESOURCE_SERVER_ID)))
+                .thenReturn(List.of(permission));
+        when(resourceServerApplicationService.createResourcePermission(
+                        eq(RESOURCE_SERVER_ID),
+                        eq("payroll.salary.write"),
+                        eq("Write salary"),
+                        eq("Write salary records")))
+                .thenReturn(resourcePermission(resourceServer, "payroll.salary.write"));
+
+        mockMvc.perform(get("/api/resource-servers/{resourceServerId}/permissions", RESOURCE_SERVER_ID)
+                        .with(adminJwt(Set.of(), Set.of("iam.resource-servers.read"), "iam.read")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("payroll.employee.read"))
+                .andExpect(jsonPath("$[0].resourceServerId").value(RESOURCE_SERVER_ID.toString()));
+        mockMvc.perform(post("/api/resource-servers/{resourceServerId}/permissions", RESOURCE_SERVER_ID)
+                        .with(adminJwt(Set.of(), Set.of("iam.resource-servers.write"), "iam.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name":"payroll.salary.write",
+                                  "displayName":"Write salary",
+                                  "description":"Write salary records"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("payroll.salary.write"));
     }
 
     @Test
@@ -1322,6 +1481,18 @@ class CoreIamControllerTests {
         Client client = Client.create(tenant("Test Tenant"), clientId, name);
         client.setId(CLIENT_ID);
         return client;
+    }
+
+    private ResourceServer resourceServer(String identifier, String name) {
+        ResourceServer resourceServer = ResourceServer.create(tenant("Test Tenant"), identifier, name);
+        resourceServer.setId(RESOURCE_SERVER_ID);
+        return resourceServer;
+    }
+
+    private ResourcePermission resourcePermission(ResourceServer resourceServer, String name) {
+        ResourcePermission permission = ResourcePermission.create(resourceServer, name, name, null);
+        permission.setId(RESOURCE_PERMISSION_ID);
+        return permission;
     }
 
     private Group group(String name) {

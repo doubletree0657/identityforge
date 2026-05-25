@@ -88,6 +88,9 @@ public class AdminApiAuthorizationManager implements AuthorizationManager<Reques
         if (path.startsWith("/api/permissions")) {
             return write ? BuiltInPermission.PERMISSIONS_WRITE.permissionName() : BuiltInPermission.PERMISSIONS_READ.permissionName();
         }
+        if (path.startsWith("/api/resource-servers")) {
+            return write ? BuiltInPermission.RESOURCE_SERVERS_WRITE.permissionName() : BuiltInPermission.RESOURCE_SERVERS_READ.permissionName();
+        }
         if (path.startsWith("/api/clients")) {
             return write ? BuiltInPermission.CLIENTS_WRITE.permissionName() : BuiltInPermission.CLIENTS_READ.permissionName();
         }

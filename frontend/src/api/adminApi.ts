@@ -10,6 +10,9 @@ import {
   PageResponse,
   PermissionResponse,
   QueryParams,
+  ResourcePermissionResponse,
+  ResourceServerResponse,
+  ResourceServerStatus,
   RoleResponse,
   TenantResponse,
   TenantStatus,
@@ -97,6 +100,22 @@ export const adminApi = {
       apiRequest<PageResponse<PermissionResponse>>('GET', '/api/permissions', undefined, cleanParams(params)),
     get: (id: string) => apiRequest<PermissionResponse>('GET', `/api/permissions/${id}`),
     create: (body: { name: string }) => apiRequest<PermissionResponse>('POST', '/api/permissions', body),
+  },
+  resourceServers: {
+    list: (params?: QueryParams) =>
+      apiRequest<PageResponse<ResourceServerResponse>>('GET', '/api/resource-servers', undefined, cleanParams(params)),
+    get: (id: string) => apiRequest<ResourceServerResponse>('GET', `/api/resource-servers/${id}`),
+    create: (body: { tenantId: string; identifier: string; name: string; description?: string }) =>
+      apiRequest<ResourceServerResponse>('POST', '/api/resource-servers', body),
+    update: (id: string, body: { identifier?: string; name?: string; description?: string; status?: ResourceServerStatus }) =>
+      apiRequest<ResourceServerResponse>('PUT', `/api/resource-servers/${id}`, body),
+    disable: (id: string) => apiRequest<ResourceServerResponse>('POST', `/api/resource-servers/${id}/disable`),
+    reactivate: (id: string) => apiRequest<ResourceServerResponse>('POST', `/api/resource-servers/${id}/reactivate`),
+    permissions: (id: string) => apiRequest<ResourcePermissionResponse[]>('GET', `/api/resource-servers/${id}/permissions`),
+    createPermission: (id: string, body: { name: string; displayName?: string; description?: string }) =>
+      apiRequest<ResourcePermissionResponse>('POST', `/api/resource-servers/${id}/permissions`, body),
+    updatePermission: (id: string, permissionId: string, body: { name?: string; displayName?: string; description?: string }) =>
+      apiRequest<ResourcePermissionResponse>('PUT', `/api/resource-servers/${id}/permissions/${permissionId}`, body),
   },
   clients: {
     list: (params?: QueryParams) => apiRequest<PageResponse<ClientResponse>>('GET', '/api/clients', undefined, cleanParams(params)),

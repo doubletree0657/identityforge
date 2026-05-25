@@ -73,6 +73,8 @@ const SYSTEM_IAM_PERMISSIONS = new Set([
   'iam.roles.write',
   'iam.permissions.read',
   'iam.permissions.write',
+  'iam.resource-servers.read',
+  'iam.resource-servers.write',
   'iam.clients.read',
   'iam.clients.write',
   'iam.audit.read',
