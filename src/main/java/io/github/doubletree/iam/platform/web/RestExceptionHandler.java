@@ -7,6 +7,7 @@ import io.github.doubletree.iam.platform.application.exception.TenantBoundaryVio
 import io.github.doubletree.iam.platform.application.exception.ValidationException;
 import io.github.doubletree.iam.platform.web.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -22,9 +23,15 @@ public class RestExceptionHandler {
     }
 
     @ExceptionHandler(TenantBoundaryViolationException.class)
-    @ResponseStatus(HttpStatus.CONFLICT)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
     public ErrorResponse handleTenantBoundaryViolation(TenantBoundaryViolationException exception) {
         return new ErrorResponse("tenant_boundary_violation", exception.getMessage());
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleAccessDenied(AccessDeniedException exception) {
+        return new ErrorResponse("access_denied", exception.getMessage());
     }
 
     @ExceptionHandler(PasswordValidationException.class)

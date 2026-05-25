@@ -13,13 +13,29 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     List<User> findByUsername(String username);
 
-    @EntityGraph(attributePaths = {"roles", "roles.permissions"})
+    @EntityGraph(attributePaths = {
+            "roles",
+            "roles.permissions",
+            "groupMemberships",
+            "groupMemberships.group",
+            "groupMemberships.group.roles",
+            "groupMemberships.group.roles.permissions"})
     Optional<User> findByTenantIdAndUsername(UUID tenantId, String username);
 
     @Override
-    @EntityGraph(attributePaths = {"roles"})
+    @EntityGraph(attributePaths = {
+            "roles",
+            "roles.permissions",
+            "groupMemberships",
+            "groupMemberships.group",
+            "groupMemberships.group.roles",
+            "groupMemberships.group.roles.permissions"})
+    Optional<User> findById(UUID id);
+
+    @Override
+    @EntityGraph(attributePaths = {"roles", "groupMemberships", "groupMemberships.group", "groupMemberships.group.roles"})
     Page<User> findAll(Pageable pageable);
 
-    @EntityGraph(attributePaths = {"roles"})
+    @EntityGraph(attributePaths = {"roles", "groupMemberships", "groupMemberships.group", "groupMemberships.group.roles"})
     Page<User> findByTenantId(UUID tenantId, Pageable pageable);
 }

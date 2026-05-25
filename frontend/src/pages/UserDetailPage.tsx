@@ -18,6 +18,7 @@ export function UserDetailPage() {
   const { userId = '' } = useParams();
   const queryClient = useQueryClient();
   const [totpSecret, setTotpSecret] = useState('');
+  const [totpUri, setTotpUri] = useState('');
 
   const user = useQuery({ queryKey: ['user', userId], queryFn: () => adminApi.users.get(userId), enabled: !!userId });
   const profile = useQuery({ queryKey: ['user-profile', userId], queryFn: () => adminApi.users.profile(userId), enabled: !!userId });
@@ -81,7 +82,10 @@ export function UserDetailPage() {
   });
   const enrollTotp = useMutation({
     mutationFn: () => adminApi.mfa.enrollTotp(userId),
-    onSuccess: (result) => setTotpSecret(result.secret),
+    onSuccess: (result) => {
+      setTotpSecret(result.secret);
+      setTotpUri(result.otpauthUri ?? '');
+    },
   });
   const verifyTotp = useMutation({ mutationFn: (code: string) => adminApi.mfa.verifyTotp(userId, code) });
   const disableTotp = useMutation({ mutationFn: () => adminApi.mfa.disableTotp(userId) });
@@ -160,6 +164,7 @@ export function UserDetailPage() {
             <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'ACTIVE' })}>Activate</Button>
             <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'DISABLED' })}>Disable</Button>
             <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'LOCKED' })}>Lock</Button>
+            <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'ACTIVE' })}>Unlock</Button>
           </div>
         }
       />
@@ -177,6 +182,9 @@ export function UserDetailPage() {
                 <option value="LOCKED">LOCKED</option>
               </Select>
             </Field>
+            <p className="text-sm text-slate-600 md:col-span-2">
+              PENDING users are not fully activated, ACTIVE users can authenticate, DISABLED users cannot authenticate, and LOCKED users are blocked until an admin unlocks them.
+            </p>
             <div className="md:col-span-2"><Button type="submit" icon={<Save className="h-4 w-4" />}>Save identity</Button></div>
             {updateUser.isError && <div className="md:col-span-2"><ErrorState error={updateUser.error} /></div>}
           </form>
@@ -207,7 +215,7 @@ export function UserDetailPage() {
             </form>
           )}
         </Card>
-        <Card title="Roles">
+        <Card title="Direct roles">
           <div className="mb-3 flex flex-wrap gap-2">
             {assignedRoles.length === 0 && user.data.roleIds.length === 0 && <span className="text-sm text-slate-500">No roles assigned.</span>}
             {assignedRoles.map((role) => (
@@ -235,6 +243,15 @@ export function UserDetailPage() {
             <Button type="submit">Assign</Button>
           </form>
           {(assignRole.isError || removeRole.isError) && <div className="mt-3"><ErrorState error={assignRole.error ?? removeRole.error} /></div>}
+        </Card>
+        <Card title="Effective authorization">
+          <div className="grid gap-4">
+            <AuthList title="Group-derived roles" values={user.data.groupRoles} />
+            <AuthList title="Effective roles" values={user.data.effectiveRoles} />
+            <AuthList title="Direct permissions" values={user.data.directPermissions} />
+            <AuthList title="Group-derived permissions" values={user.data.groupPermissions} />
+            <AuthList title="Effective permissions" values={user.data.effectivePermissions} />
+          </div>
         </Card>
         <Card title="Group memberships">
           {groups.isLoading && <LoadingState label="Loading groups" />}
@@ -295,7 +312,15 @@ export function UserDetailPage() {
         <Card title="TOTP MFA">
           <div className="grid gap-3">
             <Button onClick={() => enrollTotp.mutate()}>Enroll TOTP</Button>
-            {totpSecret && <SecretNotice title="TOTP setup secret" secret={totpSecret} />}
+            {totpSecret && (
+              <>
+                <SecretNotice title="TOTP setup secret" secret={totpSecret} />
+                {totpUri && <SecretNotice title="otpauth URI" secret={totpUri} />}
+                <p className="text-sm text-slate-600">
+                  Add the setup secret or URI to Google Authenticator, Microsoft Authenticator, or 1Password, then verify with the current six-digit code. The placeholder 123456 usually fails unless it is the current code.
+                </p>
+              </>
+            )}
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -332,5 +357,17 @@ export function UserDetailPage() {
         </Card>
       </div>
     </>
+  );
+}
+
+function AuthList({ title, values }: { title: string; values: string[] }) {
+  return (
+    <div>
+      <div className="mb-2 text-xs font-semibold uppercase text-slate-500">{title}</div>
+      <div className="flex flex-wrap gap-2">
+        {values.length === 0 && <span className="text-sm text-slate-500">None</span>}
+        {values.map((value) => <Badge key={value}>{value}</Badge>)}
+      </div>
+    </div>
   );
 }

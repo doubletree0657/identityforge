@@ -25,6 +25,16 @@ export function RolesPage() {
     queryFn: () => adminApi.permissions.list({ tenantId: selectedTenantId, size: 100 }),
     enabled: !!selectedTenantId,
   });
+  const users = useQuery({
+    queryKey: ['users-for-role-assignments', selectedTenantId],
+    queryFn: () => adminApi.users.list({ tenantId: selectedTenantId, size: 100 }),
+    enabled: !!selectedTenantId,
+  });
+  const groups = useQuery({
+    queryKey: ['groups-for-role-assignments', selectedTenantId],
+    queryFn: () => adminApi.groups.list({ tenantId: selectedTenantId, size: 100 }),
+    enabled: !!selectedTenantId,
+  });
   const createRole = useMutation({
     mutationFn: adminApi.roles.create,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roles'] }),
@@ -89,6 +99,14 @@ export function RolesPage() {
                         })}
                       </div>
                     ),
+                  },
+                  {
+                    header: 'Assignments',
+                    render: (role) => {
+                      const userCount = users.data?.items.filter((user) => user.roleIds.includes(role.id)).length ?? role.userAssignmentCount;
+                      const groupCount = groups.data?.items.filter((group) => group.roleIds.includes(role.id)).length ?? role.groupAssignmentCount;
+                      return <span className="text-sm text-slate-600">{userCount} users / {groupCount} groups</span>;
+                    },
                   },
                   {
                     header: 'Assign permission',

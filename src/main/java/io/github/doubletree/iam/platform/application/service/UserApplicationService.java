@@ -17,6 +17,7 @@ import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.UserAttributeRepository;
 import io.github.doubletree.iam.platform.repository.UserProfileRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
+import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +40,7 @@ public class UserApplicationService {
     private final UserAttributeRepository userAttributeRepository;
     private final AuditApplicationService auditApplicationService;
     private final PasswordEncoder passwordEncoder;
+    private final AdminAuthorizationService adminAuthorizationService;
 
     public UserApplicationService(
             UserRepository userRepository,
@@ -47,7 +49,8 @@ public class UserApplicationService {
             UserProfileRepository userProfileRepository,
             UserAttributeRepository userAttributeRepository,
             AuditApplicationService auditApplicationService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            AdminAuthorizationService adminAuthorizationService) {
         this.userRepository = userRepository;
         this.tenantRepository = tenantRepository;
         this.roleRepository = roleRepository;
@@ -55,12 +58,14 @@ public class UserApplicationService {
         this.userAttributeRepository = userAttributeRepository;
         this.auditApplicationService = auditApplicationService;
         this.passwordEncoder = passwordEncoder;
+        this.adminAuthorizationService = adminAuthorizationService;
     }
 
     @Transactional
     public User createUser(UUID tenantId, String username, String displayName) {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Tenant not found: " + tenantId));
+        adminAuthorizationService.assertTenantAccess(tenant.getId());
 
         User user = userRepository.save(User.create(tenant, username, displayName));
         auditApplicationService.recordEvent(tenant.getId(), "USER_CREATED", "USER", user.getId());
@@ -69,16 +74,19 @@ public class UserApplicationService {
 
     @Transactional(readOnly = true)
     public Page<User> listUsers(UUID tenantId, Pageable pageable) {
-        if (tenantId == null) {
+        UUID allowedTenantId = adminAuthorizationService.tenantIdForList(tenantId);
+        if (allowedTenantId == null) {
             return userRepository.findAll(pageable);
         }
-        return userRepository.findByTenantId(tenantId, pageable);
+        return userRepository.findByTenantId(allowedTenantId, pageable);
     }
 
     @Transactional(readOnly = true)
     public User findUser(UUID userId) {
-        return userRepository.findById(userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+        adminAuthorizationService.assertTenantAccess(user.getTenant().getId());
+        return user;
     }
 
     @Transactional
@@ -91,6 +99,7 @@ public class UserApplicationService {
             Boolean phoneNumberVerified,
             AccountStatus accountStatus) {
         User user = loadUser(userId);
+        AccountStatus previousStatus = user.getAccountStatus();
         if (displayName != null) {
             user.setDisplayName(displayName);
         }
@@ -111,6 +120,10 @@ public class UserApplicationService {
         }
         User savedUser = userRepository.save(user);
         auditApplicationService.recordEvent(savedUser.getTenant().getId(), "USER_UPDATED", "USER", savedUser.getId());
+        if (accountStatus != null && accountStatus != previousStatus) {
+            auditApplicationService.recordEvent(
+                    savedUser.getTenant().getId(), "USER_STATUS_CHANGED", "USER", savedUser.getId());
+        }
         return savedUser;
     }
 
@@ -121,9 +134,8 @@ public class UserApplicationService {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new EntityNotFoundException("Role not found: " + roleId));
 
-        if (!user.getTenant().getId().equals(role.getTenant().getId())) {
-            throw new TenantBoundaryViolationException("User and role must belong to the same tenant");
-        }
+        adminAuthorizationService.assertSameTenant(
+                user.getTenant().getId(), role.getTenant().getId(), "User and role must belong to the same tenant");
 
         user.getRoles().add(role);
         User savedUser = userRepository.save(user);
@@ -139,9 +151,8 @@ public class UserApplicationService {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new EntityNotFoundException("Role not found: " + roleId));
 
-        if (!user.getTenant().getId().equals(role.getTenant().getId())) {
-            throw new TenantBoundaryViolationException("User and role must belong to the same tenant");
-        }
+        adminAuthorizationService.assertSameTenant(
+                user.getTenant().getId(), role.getTenant().getId(), "User and role must belong to the same tenant");
 
         boolean removed = user.getRoles().remove(role);
         User savedUser = userRepository.save(user);
@@ -260,8 +271,10 @@ public class UserApplicationService {
     }
 
     private User loadUser(UUID userId) {
-        return userRepository.findById(userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+        adminAuthorizationService.assertTenantAccess(user.getTenant().getId());
+        return user;
     }
 
     private void ensureUserExists(UUID userId) {

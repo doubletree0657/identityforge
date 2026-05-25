@@ -8,6 +8,7 @@ import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.repository.PermissionRepository;
 import io.github.doubletree.iam.platform.repository.RoleRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
+import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,22 +22,26 @@ public class RoleApplicationService {
     private final TenantRepository tenantRepository;
     private final PermissionRepository permissionRepository;
     private final AuditApplicationService auditApplicationService;
+    private final AdminAuthorizationService adminAuthorizationService;
 
     public RoleApplicationService(
             RoleRepository roleRepository,
             TenantRepository tenantRepository,
             PermissionRepository permissionRepository,
-            AuditApplicationService auditApplicationService) {
+            AuditApplicationService auditApplicationService,
+            AdminAuthorizationService adminAuthorizationService) {
         this.roleRepository = roleRepository;
         this.tenantRepository = tenantRepository;
         this.permissionRepository = permissionRepository;
         this.auditApplicationService = auditApplicationService;
+        this.adminAuthorizationService = adminAuthorizationService;
     }
 
     @Transactional
     public Role createRole(UUID tenantId, String name) {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Tenant not found: " + tenantId));
+        adminAuthorizationService.assertTenantAccess(tenant.getId());
 
         Role role = roleRepository.save(Role.create(tenant, name));
         auditApplicationService.recordEvent(tenant.getId(), "ROLE_CREATED", "ROLE", role.getId());
@@ -45,16 +50,19 @@ public class RoleApplicationService {
 
     @Transactional(readOnly = true)
     public Page<Role> listRoles(UUID tenantId, Pageable pageable) {
-        if (tenantId == null) {
+        UUID allowedTenantId = adminAuthorizationService.tenantIdForList(tenantId);
+        if (allowedTenantId == null) {
             return roleRepository.findAll(pageable);
         }
-        return roleRepository.findByTenantId(tenantId, pageable);
+        return roleRepository.findByTenantId(allowedTenantId, pageable);
     }
 
     @Transactional(readOnly = true)
     public Role findRole(UUID roleId) {
-        return roleRepository.findById(roleId)
+        Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new EntityNotFoundException("Role not found: " + roleId));
+        adminAuthorizationService.assertTenantAccess(role.getTenant().getId());
+        return role;
     }
 
     @Transactional
@@ -75,9 +83,9 @@ public class RoleApplicationService {
         Permission permission = permissionRepository.findById(permissionId)
                 .orElseThrow(() -> new EntityNotFoundException("Permission not found: " + permissionId));
 
-        if (!role.getTenant().getId().equals(permission.getTenant().getId())) {
-            throw new TenantBoundaryViolationException("Role and permission must belong to the same tenant");
-        }
+        adminAuthorizationService.assertSameTenant(
+                role.getTenant().getId(), permission.getTenant().getId(),
+                "Role and permission must belong to the same tenant");
 
         role.getPermissions().add(permission);
         Role savedRole = roleRepository.save(role);
@@ -93,9 +101,9 @@ public class RoleApplicationService {
         Permission permission = permissionRepository.findById(permissionId)
                 .orElseThrow(() -> new EntityNotFoundException("Permission not found: " + permissionId));
 
-        if (!role.getTenant().getId().equals(permission.getTenant().getId())) {
-            throw new TenantBoundaryViolationException("Role and permission must belong to the same tenant");
-        }
+        adminAuthorizationService.assertSameTenant(
+                role.getTenant().getId(), permission.getTenant().getId(),
+                "Role and permission must belong to the same tenant");
 
         boolean removed = role.getPermissions().remove(permission);
         Role savedRole = roleRepository.save(role);

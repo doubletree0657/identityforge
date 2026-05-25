@@ -127,9 +127,19 @@ class CoreIamControllerTests {
     private MfaAuthenticationSuccessHandler mfaAuthenticationSuccessHandler;
 
     private final RequestPostProcessor writeScopeJwt = jwt()
+            .jwt(token -> token
+                    .claim("tenant_id", TENANT_ID.toString())
+                    .claim("effective_roles", List.of("platform-admin"))
+                    .claim("effective_permissions", List.of("iam.admin"))
+                    .claim("scope", "iam.read iam.write"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.write"));
 
     private final RequestPostProcessor readScopeJwt = jwt()
+            .jwt(token -> token
+                    .claim("tenant_id", TENANT_ID.toString())
+                    .claim("effective_roles", List.of("platform-admin"))
+                    .claim("effective_permissions", List.of("iam.admin"))
+                    .claim("scope", "iam.read"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
 
     @Test
@@ -147,6 +157,10 @@ class CoreIamControllerTests {
                                         .claim("tenant_id", TENANT_ID.toString())
                                         .claim("display_name", "Development Super Admin")
                                         .claim("roles", List.of("platform-admin"))
+                                        .claim("direct_roles", List.of("platform-admin"))
+                                        .claim("group_roles", List.of())
+                                        .claim("effective_roles", List.of("platform-admin"))
+                                        .claim("effective_permissions", List.of("iam.admin"))
                                         .claim("scope", "iam.read iam.write"))
                                 .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"))))
                 .andExpect(status().isOk())
@@ -1029,7 +1043,7 @@ class CoreIamControllerTests {
 
         mockMvc.perform(post("/api/users/{userId}/roles/{roleId}", USER_ID, ROLE_ID)
                         .with(writeScopeJwt))
-                .andExpect(status().isConflict())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("tenant_boundary_violation"))
                 .andExpect(jsonPath("$.message").value("User and role must belong to the same tenant"));
     }

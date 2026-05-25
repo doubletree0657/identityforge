@@ -5,6 +5,7 @@ import io.github.doubletree.iam.platform.domain.Group;
 import io.github.doubletree.iam.platform.web.dto.CreateGroupRequest;
 import io.github.doubletree.iam.platform.web.dto.GroupResponse;
 import io.github.doubletree.iam.platform.web.dto.PageResponse;
+import io.github.doubletree.iam.platform.web.dto.RoleResponse;
 import io.github.doubletree.iam.platform.web.dto.UpdateGroupRequest;
 import io.github.doubletree.iam.platform.web.dto.UserResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -89,5 +90,25 @@ public class GroupController {
         return groupApplicationService.findGroup(groupId).getUsers().stream()
                 .map(UserResponse::from)
                 .toList();
+    }
+
+    @GetMapping("/{groupId}/roles")
+    @Operation(summary = "List group roles", description = "Requires iam.read scope and admin authorization.")
+    public List<RoleResponse> listGroupRoles(@PathVariable UUID groupId) {
+        return groupApplicationService.findGroup(groupId).getRoles().stream()
+                .map(RoleResponse::from)
+                .toList();
+    }
+
+    @PostMapping("/{groupId}/roles/{roleId}")
+    @Operation(summary = "Assign role to group", description = "Requires iam.write scope and admin authorization.")
+    public GroupResponse assignRoleToGroup(@PathVariable UUID groupId, @PathVariable UUID roleId) {
+        return GroupResponse.from(groupApplicationService.assignRoleToGroup(groupId, roleId));
+    }
+
+    @DeleteMapping("/{groupId}/roles/{roleId}")
+    @Operation(summary = "Remove role from group", description = "Requires iam.write scope and admin authorization.")
+    public GroupResponse removeRoleFromGroup(@PathVariable UUID groupId, @PathVariable UUID roleId) {
+        return GroupResponse.from(groupApplicationService.removeRoleFromGroup(groupId, roleId));
     }
 }

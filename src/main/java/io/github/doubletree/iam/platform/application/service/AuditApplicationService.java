@@ -4,6 +4,7 @@ import io.github.doubletree.iam.platform.domain.AuditActorType;
 import io.github.doubletree.iam.platform.domain.AuditLog;
 import io.github.doubletree.iam.platform.domain.AuditResult;
 import io.github.doubletree.iam.platform.repository.AuditLogRepository;
+import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,9 +17,13 @@ public class AuditApplicationService {
     static final String DEFAULT_ACTOR = "api-client";
 
     private final AuditLogRepository auditLogRepository;
+    private final AdminAuthorizationService adminAuthorizationService;
 
-    public AuditApplicationService(AuditLogRepository auditLogRepository) {
+    public AuditApplicationService(
+            AuditLogRepository auditLogRepository,
+            org.springframework.beans.factory.ObjectProvider<AdminAuthorizationService> adminAuthorizationService) {
         this.auditLogRepository = auditLogRepository;
+        this.adminAuthorizationService = adminAuthorizationService.getIfAvailable();
     }
 
     public AuditLog recordEvent(UUID tenantId, String action, String resourceType, UUID resourceId) {
@@ -47,7 +52,8 @@ public class AuditApplicationService {
             UUID resourceId,
             io.github.doubletree.iam.platform.domain.AuditResult result,
             Pageable pageable) {
-        Specification<AuditLog> specification = Specification.where(equalUuid("tenantId", tenantId))
+        UUID allowedTenantId = adminAuthorizationService == null ? tenantId : adminAuthorizationService.tenantIdForList(tenantId);
+        Specification<AuditLog> specification = Specification.where(equalUuid("tenantId", allowedTenantId))
                 .and(equalString("action", action))
                 .and(equalString("resourceType", resourceType))
                 .and(equalUuid("resourceId", resourceId))

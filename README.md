@@ -163,8 +163,10 @@ The Admin Console is organized around relationship-aware IAM workflows:
   tenant without copying tenant UUIDs.
 - A user belongs to one tenant, does not have to belong to a group, and can
   belong to many groups. Groups are optional organizational containers.
-- Assign roles directly to users and permissions to roles using tenant-scoped
-  selectors. Role-to-group assignment is future work.
+- Assign roles directly to users, assign roles to groups, and attach
+  permissions to roles using tenant-scoped selectors.
+- Review direct roles, group-derived roles, effective roles, and effective
+  permissions on the user detail page.
 - Add and remove group members from the group detail page using tenant user
   selectors.
 - Manage user identity, profile, custom attributes, password, TOTP actions, and
@@ -209,13 +211,45 @@ After the application starts:
 - Swagger UI: `http://localhost:8080/swagger-ui/index.html`
 - OpenAPI JSON: `http://localhost:8080/v3/api-docs`
 
-The health endpoint is public. Management APIs under `/api/**` and SCIM APIs
-under `/scim/v2/**` require OAuth2 JWT scopes:
+The health endpoint is public. `/api/me` returns safe current-principal
+information for authenticated users with `iam.read`; it does not expose
+password hashes, client secret hashes, token material, or TOTP ciphertext.
+Management APIs under `/api/**` require both OAuth2 JWT scopes and Admin RBAC:
 
 - Read operations require `iam.read`.
 - Write operations require `iam.write`.
-- The Admin Console also checks `/api/me` for an admin role such as
-  `platform-admin` before rendering management screens.
+- The token must also contain an admin role or admin permission.
+- `platform-admin` can manage all tenants.
+- `tenant-admin` can manage resources only in its own tenant.
+- Normal users are rejected from Admin APIs even if a token contains
+  `iam.read` or `iam.write`.
+
+Local user access tokens include stable authorization claims: `user_id`,
+`tenant_id`, `display_name`, `direct_roles`, `group_roles`, `effective_roles`,
+`direct_permissions`, `group_permissions`, and `effective_permissions`.
+`roles` and `permissions` remain compatibility aliases for effective roles and
+effective permissions. Service-client SCIM access remains scope-based under
+`/scim/v2/**`; service-client Admin API access should use an explicit future
+machine-admin model rather than React client secrets.
+
+Role and permission resolution is additive and de-duplicated:
+
+- Direct permissions come from `User -> Role -> Permission`.
+- Group-derived permissions come from
+  `User -> GroupMembership -> Group -> Role -> Permission`.
+- Group, role, and user assignments are tenant-boundary checked.
+
+User lifecycle status has login impact:
+
+- `PENDING`: created but not fully activated or password not set.
+- `ACTIVE`: can authenticate.
+- `DISABLED`: cannot authenticate.
+- `LOCKED`: cannot authenticate until an administrator unlocks the user.
+
+TOTP enrollment returns the setup secret and `otpauth://` URI only during
+enrollment. The UI tells administrators to add the secret or URI to Google
+Authenticator, Microsoft Authenticator, or 1Password and verify with the
+current six-digit authenticator code.
 
 ## OAuth2 Authorization Code Demo
 

@@ -43,6 +43,13 @@ export interface UserResponse {
   createdAt: string;
   updatedAt: string;
   roleIds: string[];
+  groupRoleIds: string[];
+  directRoles: string[];
+  groupRoles: string[];
+  effectiveRoles: string[];
+  directPermissions: string[];
+  groupPermissions: string[];
+  effectivePermissions: string[];
 }
 
 export interface UserProfileResponse {
@@ -81,6 +88,7 @@ export interface GroupResponse {
   createdAt: string;
   updatedAt: string;
   memberIds: string[];
+  roleIds: string[];
 }
 
 export interface RoleResponse {
@@ -90,6 +98,8 @@ export interface RoleResponse {
   createdAt: string;
   updatedAt: string;
   permissionIds: string[];
+  userAssignmentCount: number;
+  groupAssignmentCount: number;
 }
 
 export interface PermissionResponse {
@@ -123,6 +133,7 @@ export interface ClientSecretResponse {
 export interface MfaEnrollmentResponse {
   userId: string;
   secret: string;
+  otpauthUri?: string;
 }
 
 export interface TotpVerificationResponse {

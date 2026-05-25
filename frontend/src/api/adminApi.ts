@@ -76,6 +76,11 @@ export const adminApi = {
     removeMember: (groupId: string, userId: string) =>
       apiRequest<GroupResponse>('DELETE', `/api/groups/${groupId}/members/${userId}`),
     members: (groupId: string) => apiRequest<UserResponse[]>('GET', `/api/groups/${groupId}/members`),
+    assignRole: (groupId: string, roleId: string) =>
+      apiRequest<GroupResponse>('POST', `/api/groups/${groupId}/roles/${roleId}`),
+    removeRole: (groupId: string, roleId: string) =>
+      apiRequest<GroupResponse>('DELETE', `/api/groups/${groupId}/roles/${roleId}`),
+    roles: (groupId: string) => apiRequest<RoleResponse[]>('GET', `/api/groups/${groupId}/roles`),
   },
   roles: {
     list: (params?: QueryParams) => apiRequest<PageResponse<RoleResponse>>('GET', '/api/roles', undefined, cleanParams(params)),

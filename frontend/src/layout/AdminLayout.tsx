@@ -70,7 +70,9 @@ export function AdminLayout() {
             <div>
               <div className="text-sm font-semibold text-ink">Admin Console v1</div>
               <div className="text-xs text-slate-500">
-                {user ? `Signed in as ${user.displayName || user.username}` : 'Signed in'}
+                {user ? `Signed in as ${user.displayName || user.username} · ${
+                  user.isPlatformAdmin ? 'platform-admin' : user.isTenantAdmin ? 'tenant-admin' : 'non-admin'
+                }` : 'Signed in'}
               </div>
             </div>
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
@@ -89,6 +91,7 @@ export function AdminLayout() {
                     </option>
                   ))}
                 </Select>
+                {selectedTenant && <span className="text-[11px] text-slate-500">Selected: {selectedTenant.name}</span>}
               </label>
               <Button variant="secondary" onClick={logout}>Logout</Button>
             </div>

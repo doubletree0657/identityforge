@@ -14,11 +14,15 @@ public record GroupResponse(
         String description,
         Instant createdAt,
         Instant updatedAt,
-        Set<UUID> memberIds) {
+        Set<UUID> memberIds,
+        Set<UUID> roleIds) {
 
     public static GroupResponse from(Group group) {
         Set<UUID> memberIds = group.getUsers().stream()
                 .map(user -> user.getId())
+                .collect(Collectors.toSet());
+        Set<UUID> roleIds = group.getRoles().stream()
+                .map(role -> role.getId())
                 .collect(Collectors.toSet());
         return new GroupResponse(
                 group.getId(),
@@ -28,6 +32,7 @@ public record GroupResponse(
                 group.getDescription(),
                 group.getCreatedAt(),
                 group.getUpdatedAt(),
-                memberIds);
+                memberIds,
+                roleIds);
     }
 }

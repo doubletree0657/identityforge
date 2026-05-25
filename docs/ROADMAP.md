@@ -237,14 +237,25 @@ Completed slices:
   token exchange guidance.
 - First-class local Admin Console login backed by dev-only bootstrap admin
   credentials, the public `iam-admin-console` PKCE client, and `/api/me`.
+- Backend-enforced Admin RBAC for `/api/**`: `platform-admin` can manage all
+  tenants, `tenant-admin` is tenant-bound, and normal users are denied even
+  with IAM scopes.
+- Effective authorization calculation across direct user roles and
+  group-derived roles, with de-duplicated effective permissions exposed in JWT
+  claims, `/api/me`, and the Admin Console.
+- Group-to-role assignment APIs and UI, with tenant-boundary checks for
+  user/group, user/role, and group/role relationships.
+- Clearer user lifecycle controls for `PENDING`, `ACTIVE`, `DISABLED`, and
+  `LOCKED`, plus status-change audit events.
+- TOTP enrollment UX with one-time setup secret display, `otpauth://` URI, and
+  authenticator-app guidance.
 - Frontend build verification through `npm run build`.
 
 Candidate slices:
 
 - Production authentication and session model.
-- Backend-enforced role/permission authorization beyond the current `/api/me`
-  Admin Console guard and JWT role claims.
-- Role-to-group assignment and richer group-derived authorization.
+- Machine-admin authorization for service clients that need non-SCIM Admin API
+  access.
 - Safe delete/archive workflows where domain ownership and cascade behavior are
   explicitly designed.
 - Designed login, consent, and MFA challenge screens.

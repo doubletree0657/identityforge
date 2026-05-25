@@ -9,5 +9,11 @@ public record CurrentUserResponse(
         String tenantId,
         String displayName,
         Set<String> roles,
-        Set<String> scopes) {
+        Set<String> scopes,
+        Set<String> directRoles,
+        Set<String> groupRoles,
+        Set<String> effectiveRoles,
+        Set<String> effectivePermissions,
+        boolean isPlatformAdmin,
+        boolean isTenantAdmin) {
 }

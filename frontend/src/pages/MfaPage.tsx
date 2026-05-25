@@ -14,15 +14,25 @@ import { PageHeader } from './PageHeader';
 export function MfaPage() {
   const [userId, setUserId] = useState('');
   const [secret, setSecret] = useState('');
+  const [otpauthUri, setOtpauthUri] = useState('');
   const { selectedTenantId } = useTenantContext();
   const users = useQuery({
     queryKey: ['users-for-mfa', selectedTenantId],
     queryFn: () => adminApi.users.list({ tenantId: selectedTenantId, size: 100 }),
     enabled: !!selectedTenantId,
   });
-  const enroll = useMutation({ mutationFn: () => adminApi.mfa.enrollTotp(userId), onSuccess: (result) => setSecret(result.secret) });
+  const enroll = useMutation({
+    mutationFn: () => adminApi.mfa.enrollTotp(userId),
+    onSuccess: (result) => {
+      setSecret(result.secret);
+      setOtpauthUri(result.otpauthUri ?? '');
+    },
+  });
   const verify = useMutation({ mutationFn: (code: string) => adminApi.mfa.verifyTotp(userId, code) });
-  const disable = useMutation({ mutationFn: () => adminApi.mfa.disableTotp(userId), onSuccess: () => setSecret('') });
+  const disable = useMutation({ mutationFn: () => adminApi.mfa.disableTotp(userId), onSuccess: () => {
+    setSecret('');
+    setOtpauthUri('');
+  } });
 
   function verifyCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,7 +41,7 @@ export function MfaPage() {
 
   return (
     <>
-      <PageHeader title="MFA" description="Admin TOTP enrollment operations. This does not add MFA to login." />
+      <PageHeader title="MFA" description="Enroll and verify TOTP credentials used during local-user login." />
       {!selectedTenantId && <TenantRequired label="Select a tenant to choose users for MFA operations." />}
       <Card title="TOTP operations">
         <div className="grid max-w-2xl gap-4">
@@ -48,7 +58,15 @@ export function MfaPage() {
             <Button onClick={() => enroll.mutate()} disabled={!userId}>Enroll TOTP</Button>
             <Button variant="danger" onClick={() => disable.mutate()} disabled={!userId}>Disable TOTP</Button>
           </div>
-          {secret && <SecretNotice title="TOTP setup secret" secret={secret} />}
+          {secret && (
+            <div className="grid gap-3">
+              <SecretNotice title="TOTP setup secret" secret={secret} />
+              {otpauthUri && <SecretNotice title="otpauth URI" secret={otpauthUri} />}
+              <p className="text-sm text-slate-600">
+                Add the setup secret or otpauth URI to Google Authenticator, Microsoft Authenticator, or 1Password, then enter the current six-digit code. The placeholder 123456 usually fails unless it is the current authenticator code.
+              </p>
+            </div>
+          )}
           <form onSubmit={verifyCode} className="flex gap-2">
             <Input name="code" placeholder="123456" />
             <Button type="submit" variant="secondary" disabled={!userId}>Verify</Button>

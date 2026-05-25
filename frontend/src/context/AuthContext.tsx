@@ -33,12 +33,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     enabled: !sessionExpired,
     retry: false,
   });
-  const roles = currentUser.data?.roles ?? [];
+  const roles = currentUser.data?.effectiveRoles ?? currentUser.data?.roles ?? [];
   const value: AuthContextValue = {
     user: currentUser.data,
     isLoading: currentUser.isLoading,
     isAuthenticated: Boolean(currentUser.data) && !sessionExpired,
-    isAdmin: roles.includes('platform-admin') || roles.includes('tenant-admin'),
+    isAdmin: Boolean(currentUser.data?.isPlatformAdmin || currentUser.data?.isTenantAdmin)
+      || roles.includes('platform-admin')
+      || roles.includes('tenant-admin'),
     sessionExpired,
     error: currentUser.error,
   };

@@ -9,6 +9,7 @@ import io.github.doubletree.iam.platform.domain.ClientType;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
+import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.LinkedHashSet;
@@ -27,17 +28,20 @@ public class ClientApplicationService {
     private final TenantRepository tenantRepository;
     private final AuditApplicationService auditApplicationService;
     private final PasswordEncoder passwordEncoder;
+    private final AdminAuthorizationService adminAuthorizationService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public ClientApplicationService(
             ClientRepository clientRepository,
             TenantRepository tenantRepository,
             AuditApplicationService auditApplicationService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            AdminAuthorizationService adminAuthorizationService) {
         this.clientRepository = clientRepository;
         this.tenantRepository = tenantRepository;
         this.auditApplicationService = auditApplicationService;
         this.passwordEncoder = passwordEncoder;
+        this.adminAuthorizationService = adminAuthorizationService;
     }
 
     @Transactional
@@ -54,6 +58,7 @@ public class ClientApplicationService {
             Set<String> authenticationMethods) {
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Tenant not found: " + tenantId));
+        adminAuthorizationService.assertTenantAccess(tenant.getId());
 
         Client candidate = Client.create(tenant, clientId, clientName);
         ClientType effectiveClientType = clientType == null ? ClientType.CONFIDENTIAL : clientType;
@@ -84,10 +89,11 @@ public class ClientApplicationService {
 
     @Transactional(readOnly = true)
     public Page<Client> listClients(UUID tenantId, Pageable pageable) {
-        if (tenantId == null) {
+        UUID allowedTenantId = adminAuthorizationService.tenantIdForList(tenantId);
+        if (allowedTenantId == null) {
             return clientRepository.findAll(pageable);
         }
-        return clientRepository.findByTenantId(tenantId, pageable);
+        return clientRepository.findByTenantId(allowedTenantId, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -142,8 +148,10 @@ public class ClientApplicationService {
     }
 
     private Client loadClient(UUID clientId) {
-        return clientRepository.findById(clientId)
+        Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new EntityNotFoundException("Client not found: " + clientId));
+        adminAuthorizationService.assertTenantAccess(client.getTenant().getId());
+        return client;
     }
 
     private void configureClient(

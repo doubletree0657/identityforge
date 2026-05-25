@@ -6,6 +6,7 @@ import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import io.github.doubletree.iam.platform.application.service.AuditApplicationService;
+import io.github.doubletree.iam.platform.security.AdminApiAuthorizationManager;
 import io.github.doubletree.iam.platform.security.authentication.MfaAuthenticationSuccessHandler;
 import io.github.doubletree.iam.platform.security.authentication.PlatformUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
@@ -112,11 +113,12 @@ public class AuthorizationServerConfiguration {
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/login", "/login/mfa", "/logout").permitAll()
                         .requestMatchers("/oauth2/consent").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/**").hasAuthority("SCOPE_iam.write")
-                        .requestMatchers(HttpMethod.PUT, "/api/**").hasAuthority("SCOPE_iam.write")
-                        .requestMatchers(HttpMethod.PATCH, "/api/**").hasAuthority("SCOPE_iam.write")
-                        .requestMatchers(HttpMethod.DELETE, "/api/**").hasAuthority("SCOPE_iam.write")
-                        .requestMatchers("/api/**").hasAuthority("SCOPE_iam.read")
+                        .requestMatchers("/api/me").hasAuthority("SCOPE_iam.read")
+                        .requestMatchers(HttpMethod.POST, "/api/**").access(new AdminApiAuthorizationManager("iam.write"))
+                        .requestMatchers(HttpMethod.PUT, "/api/**").access(new AdminApiAuthorizationManager("iam.write"))
+                        .requestMatchers(HttpMethod.PATCH, "/api/**").access(new AdminApiAuthorizationManager("iam.write"))
+                        .requestMatchers(HttpMethod.DELETE, "/api/**").access(new AdminApiAuthorizationManager("iam.write"))
+                        .requestMatchers("/api/**").access(new AdminApiAuthorizationManager("iam.read"))
                         .requestMatchers(HttpMethod.POST, "/scim/v2/**").hasAuthority("SCOPE_iam.write")
                         .requestMatchers("/scim/v2/**").hasAuthority("SCOPE_iam.read")
                         .anyRequest().permitAll())
@@ -293,8 +295,14 @@ public class AuthorizationServerConfiguration {
                     .claim("user_id", userDetails.userId().toString())
                     .claim("tenant_id", userDetails.tenantId().toString())
                     .claim("display_name", userDetails.displayName())
-                    .claim("roles", userDetails.roles())
-                    .claim("permissions", userDetails.permissions());
+                    .claim("roles", userDetails.effectiveRoles())
+                    .claim("permissions", userDetails.effectivePermissions())
+                    .claim("direct_roles", userDetails.directRoles())
+                    .claim("group_roles", userDetails.groupRoles())
+                    .claim("effective_roles", userDetails.effectiveRoles())
+                    .claim("direct_permissions", userDetails.directPermissions())
+                    .claim("group_permissions", userDetails.groupPermissions())
+                    .claim("effective_permissions", userDetails.effectivePermissions());
         };
     }
 

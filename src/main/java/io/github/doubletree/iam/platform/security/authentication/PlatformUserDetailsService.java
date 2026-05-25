@@ -1,5 +1,6 @@
 package io.github.doubletree.iam.platform.security.authentication;
 
+import io.github.doubletree.iam.platform.application.service.EffectiveAuthorizationService;
 import io.github.doubletree.iam.platform.domain.User;
 import io.github.doubletree.iam.platform.repository.UserRepository;
 import java.util.List;
@@ -15,9 +16,13 @@ public class PlatformUserDetailsService implements UserDetailsService {
     private static final String GENERIC_AUTHENTICATION_FAILURE = "Invalid username or password";
 
     private final UserRepository userRepository;
+    private final EffectiveAuthorizationService effectiveAuthorizationService;
 
-    public PlatformUserDetailsService(UserRepository userRepository) {
+    public PlatformUserDetailsService(
+            UserRepository userRepository,
+            EffectiveAuthorizationService effectiveAuthorizationService) {
         this.userRepository = userRepository;
+        this.effectiveAuthorizationService = effectiveAuthorizationService;
     }
 
     @Override
@@ -28,7 +33,8 @@ public class PlatformUserDetailsService implements UserDetailsService {
             throw new UsernameNotFoundException(GENERIC_AUTHENTICATION_FAILURE);
         }
         User user = users.getFirst();
-        return PlatformUserDetails.from(userRepository.findByTenantIdAndUsername(user.getTenant().getId(), username)
-                .orElse(user));
+        return PlatformUserDetails.from(
+                userRepository.findByTenantIdAndUsername(user.getTenant().getId(), username).orElse(user),
+                effectiveAuthorizationService);
     }
 }

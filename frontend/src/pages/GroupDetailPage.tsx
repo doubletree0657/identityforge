@@ -20,6 +20,11 @@ export function GroupDetailPage() {
     queryFn: () => adminApi.users.list({ tenantId: group.data!.tenantId, size: 100 }),
     enabled: !!group.data?.tenantId,
   });
+  const roles = useQuery({
+    queryKey: ['roles-for-group-detail', group.data?.tenantId],
+    queryFn: () => adminApi.roles.list({ tenantId: group.data!.tenantId, size: 100 }),
+    enabled: !!group.data?.tenantId,
+  });
   const updateGroup = useMutation({
     mutationFn: (body: { name?: string; displayName?: string; description?: string }) => adminApi.groups.update(groupId, body),
     onSuccess: () => {
@@ -36,6 +41,20 @@ export function GroupDetailPage() {
   });
   const removeMember = useMutation({
     mutationFn: (userId: string) => adminApi.groups.removeMember(groupId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['group', groupId] });
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
+  const assignRole = useMutation({
+    mutationFn: (roleId: string) => adminApi.groups.assignRole(groupId, roleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['group', groupId] });
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
+  const removeRole = useMutation({
+    mutationFn: (roleId: string) => adminApi.groups.removeRole(groupId, roleId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['group', groupId] });
       queryClient.invalidateQueries({ queryKey: ['groups'] });
@@ -64,10 +83,12 @@ export function GroupDetailPage() {
 
   const members = users.data?.items.filter((user) => group.data.memberIds.includes(user.id)) ?? [];
   const availableUsers = users.data?.items.filter((user) => !group.data.memberIds.includes(user.id)) ?? [];
+  const assignedRoles = roles.data?.items.filter((role) => group.data.roleIds.includes(role.id)) ?? [];
+  const availableRoles = roles.data?.items.filter((role) => !group.data.roleIds.includes(role.id)) ?? [];
 
   return (
     <>
-      <PageHeader title={group.data.displayName || group.data.name} description="Groups are optional tenant-scoped containers for organizing users. Roles are assigned directly to users in this version." />
+      <PageHeader title={group.data.displayName || group.data.name} description="Groups are tenant-scoped containers. Users inherit effective roles and permissions from assigned group roles." />
       <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
         <Card title="Group metadata">
           <form onSubmit={update} className="grid gap-3">
@@ -77,6 +98,33 @@ export function GroupDetailPage() {
             <Button type="submit" icon={<Save className="h-4 w-4" />}>Save group</Button>
             {updateGroup.isError && <ErrorState error={updateGroup.error} />}
           </form>
+        </Card>
+        <Card title="Assigned roles">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              assignRole.mutate(String(new FormData(event.currentTarget).get('roleId') ?? ''));
+            }}
+            className="mb-4 flex gap-2"
+          >
+            <Select name="roleId" className="flex-1">
+              <option value="">Select tenant role</option>
+              {availableRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+            </Select>
+            <Button type="submit" variant="secondary">Assign role</Button>
+          </form>
+          {roles.isLoading && <LoadingState label="Loading roles" />}
+          {roles.isError && <ErrorState error={roles.error} />}
+          <DataTable
+            items={assignedRoles}
+            emptyTitle="No group roles"
+            columns={[
+              { header: 'Role', render: (role) => <span className="font-medium">{role.name}</span> },
+              { header: 'Permissions', render: (role) => role.permissionIds.length },
+              { header: 'Action', render: (role) => <Button variant="danger" onClick={() => removeRole.mutate(role.id)}>Remove</Button> },
+            ]}
+          />
+          {(assignRole.isError || removeRole.isError) && <div className="mt-3"><ErrorState error={assignRole.error ?? removeRole.error} /></div>}
         </Card>
         <Card title="Members">
           <form

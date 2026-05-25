@@ -10,13 +10,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface GroupRepository extends JpaRepository<Group, UUID> {
 
     @Override
-    @EntityGraph(attributePaths = {"memberships", "memberships.user"})
+    @EntityGraph(attributePaths = {"memberships", "memberships.user", "roles", "roles.permissions"})
     Page<Group> findAll(Pageable pageable);
 
-    @EntityGraph(attributePaths = {"memberships", "memberships.user"})
+    @EntityGraph(attributePaths = {"memberships", "memberships.user", "roles", "roles.permissions"})
     Page<Group> findByTenantId(UUID tenantId, Pageable pageable);
 
     @Override
-    @EntityGraph(attributePaths = {"memberships", "memberships.user"})
+    @EntityGraph(attributePaths = {"memberships", "memberships.user", "roles", "roles.permissions"})
     java.util.Optional<Group> findById(UUID id);
 }

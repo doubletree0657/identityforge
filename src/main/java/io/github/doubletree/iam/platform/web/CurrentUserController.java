@@ -1,5 +1,6 @@
 package io.github.doubletree.iam.platform.web;
 
+import io.github.doubletree.iam.platform.security.AdminAuthorities;
 import io.github.doubletree.iam.platform.web.dto.CurrentUserResponse;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -19,14 +20,27 @@ public class CurrentUserController {
     public CurrentUserResponse currentUser(@AuthenticationPrincipal Jwt jwt) {
         Set<String> roles = claimSet(jwt, "roles");
         Set<String> scopes = claimSet(jwt, "scope");
+        Set<String> directRoles = claimSet(jwt, "direct_roles");
+        Set<String> groupRoles = claimSet(jwt, "group_roles");
+        Set<String> effectiveRoles = claimSet(jwt, "effective_roles");
+        Set<String> effectivePermissions = claimSet(jwt, "effective_permissions");
+        if (effectiveRoles.isEmpty()) {
+            effectiveRoles = roles;
+        }
         return new CurrentUserResponse(
                 jwt.getSubject(),
                 jwt.getSubject(),
                 jwt.getClaimAsString("user_id"),
                 jwt.getClaimAsString("tenant_id"),
                 jwt.getClaimAsString("display_name"),
-                roles,
-                scopes);
+                effectiveRoles,
+                scopes,
+                directRoles,
+                groupRoles,
+                effectiveRoles,
+                effectivePermissions,
+                AdminAuthorities.isPlatformAdmin(effectiveRoles),
+                AdminAuthorities.isTenantAdmin(effectiveRoles));
     }
 
     private Set<String> claimSet(Jwt jwt, String claimName) {

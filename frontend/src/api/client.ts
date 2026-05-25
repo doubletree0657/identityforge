@@ -57,7 +57,7 @@ function normalizeAxiosError(error: AxiosError<ErrorResponse>): ApiError {
     return new ApiError('A bearer token is required for this API.', 'unauthorized', status);
   }
   if (status === 403) {
-    return new ApiError('The current token does not have the required scope.', 'forbidden', status);
+    return new ApiError('This account is authenticated but is not authorized for this Admin API action.', 'forbidden', status);
   }
   return new ApiError(error.message || 'API request failed', 'api_error', status);
 }

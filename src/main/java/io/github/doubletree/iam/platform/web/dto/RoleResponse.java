@@ -6,7 +6,15 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-public record RoleResponse(UUID id, UUID tenantId, String name, Instant createdAt, Instant updatedAt, Set<UUID> permissionIds) {
+public record RoleResponse(
+        UUID id,
+        UUID tenantId,
+        String name,
+        Instant createdAt,
+        Instant updatedAt,
+        Set<UUID> permissionIds,
+        long userAssignmentCount,
+        long groupAssignmentCount) {
 
     public static RoleResponse from(Role role) {
         Set<UUID> permissionIds = role.getPermissions().stream()
@@ -18,6 +26,8 @@ public record RoleResponse(UUID id, UUID tenantId, String name, Instant createdA
                 role.getName(),
                 role.getCreatedAt(),
                 role.getUpdatedAt(),
-                permissionIds);
+                permissionIds,
+                0,
+                0);
     }
 }

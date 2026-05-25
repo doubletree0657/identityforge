@@ -16,6 +16,12 @@ export interface CurrentUser {
   displayName?: string;
   roles: string[];
   scopes: string[];
+  directRoles: string[];
+  groupRoles: string[];
+  effectiveRoles: string[];
+  effectivePermissions: string[];
+  isPlatformAdmin: boolean;
+  isTenantAdmin: boolean;
 }
 
 export async function startOAuthLogin() {

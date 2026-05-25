@@ -6,6 +6,7 @@ import io.github.doubletree.iam.platform.domain.TotpCredential;
 import io.github.doubletree.iam.platform.domain.User;
 import io.github.doubletree.iam.platform.repository.TotpCredentialRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
+import io.github.doubletree.iam.platform.security.AdminAuthorizationService;
 import io.github.doubletree.iam.platform.security.crypto.SecretEncryptionService;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -31,17 +32,20 @@ public class MfaApplicationService {
     private final TotpCredentialRepository totpCredentialRepository;
     private final AuditApplicationService auditApplicationService;
     private final SecretEncryptionService secretEncryptionService;
+    private final AdminAuthorizationService adminAuthorizationService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public MfaApplicationService(
             UserRepository userRepository,
             TotpCredentialRepository totpCredentialRepository,
             AuditApplicationService auditApplicationService,
-            SecretEncryptionService secretEncryptionService) {
+            SecretEncryptionService secretEncryptionService,
+            AdminAuthorizationService adminAuthorizationService) {
         this.userRepository = userRepository;
         this.totpCredentialRepository = totpCredentialRepository;
         this.auditApplicationService = auditApplicationService;
         this.secretEncryptionService = secretEncryptionService;
+        this.adminAuthorizationService = adminAuthorizationService;
     }
 
     @Transactional
@@ -59,7 +63,10 @@ public class MfaApplicationService {
         TotpCredential savedCredential = totpCredentialRepository.save(credential);
 
         auditApplicationService.recordEvent(user.getTenant().getId(), "MFA_ENROLLED", "USER", user.getId());
-        return new MfaEnrollmentResult(savedCredential.getUser().getId(), secret);
+        return new MfaEnrollmentResult(
+                savedCredential.getUser().getId(),
+                secret,
+                otpauthUri(savedCredential.getUser(), secret));
     }
 
     @Transactional
@@ -163,14 +170,22 @@ public class MfaApplicationService {
     }
 
     private User findUser(UUID userId) {
-        return userRepository.findById(userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+        adminAuthorizationService.assertTenantAccess(user.getTenant().getId());
+        return user;
     }
 
     private String generateSecret() {
         byte[] bytes = new byte[20];
         secureRandom.nextBytes(bytes);
         return encodeBase32(bytes);
+    }
+
+    private String otpauthUri(User user, String secret) {
+        return "otpauth://totp/International%20IAM:" + user.getUsername()
+                + "?secret=" + secret
+                + "&issuer=International%20IAM&algorithm=SHA1&digits=6&period=30";
     }
 
     private String encodeBase32(byte[] bytes) {
