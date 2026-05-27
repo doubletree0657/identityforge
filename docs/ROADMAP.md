@@ -265,7 +265,10 @@ Completed slices:
   separate application permissions for future business-resource authorization,
   while system IAM permissions remain global Admin API capabilities.
 - OAuth2 clients can optionally link to a tenant resource server and allow
-  selected application permissions as future OAuth2 application scopes.
+  selected application permissions as OAuth2 application scopes. Assigned
+  application permission scopes can be requested by that client, while
+  unassigned application scopes are rejected by token issuance. Full external
+  resource API policy enforcement remains future work.
 - Clearer user lifecycle controls for `PENDING`, `ACTIVE`, `DISABLED`, and
   `LOCKED`, plus status-change audit events.
 - TOTP enrollment UX with one-time setup secret display, `otpauth://` URI, and

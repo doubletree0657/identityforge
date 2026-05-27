@@ -1182,7 +1182,8 @@ class CoreIamControllerTests {
                         any(),
                         any(),
                         any(),
-                        any()))
+                        any(),
+                        eq(false)))
                 .thenReturn(client);
 
         mockMvc.perform(put("/api/clients/{clientId}", CLIENT_ID)

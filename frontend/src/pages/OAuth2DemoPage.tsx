@@ -1,22 +1,35 @@
 import { FormEvent, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { adminApi } from '../api/adminApi';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { Field, Input } from '../components/Form';
+import { Field, Input, Select } from '../components/Form';
 import { getApiBaseUrl } from '../api/storage';
+import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
 export function OAuth2DemoPage() {
   const [authorizationUrl, setAuthorizationUrl] = useState('');
   const [tokenCommand, setTokenCommand] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const { selectedTenantId } = useTenantContext();
+  const clients = useQuery({
+    queryKey: ['clients', 'oauth2-demo', selectedTenantId],
+    queryFn: () => adminApi.clients.list({ page: 0, size: 100, tenantId: selectedTenantId }),
+    enabled: !!selectedTenantId,
+  });
+  const selectedClient = (clients.data?.items ?? []).find((client) => client.id === selectedClientId);
 
   function generate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const baseUrl = getApiBaseUrl();
-    const clientId = String(form.get('clientId') ?? '');
+    const clientId = selectedClient?.clientId ?? String(form.get('clientId') ?? '');
     const redirectUri = String(form.get('redirectUri') ?? '');
-    const scope = String(form.get('scope') ?? 'iam.read');
+    const baseScopes = String(form.get('scope') ?? 'iam.read').split(/[,\s]+/).filter(Boolean);
+    const applicationScopes = form.getAll('applicationScope').map(String);
+    const scope = [...baseScopes, ...applicationScopes].join(' ');
     const state = crypto.randomUUID();
     const url = new URL('/oauth2/authorize', baseUrl);
     url.searchParams.set('response_type', 'code');
@@ -41,13 +54,36 @@ export function OAuth2DemoPage() {
       <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
         <Card title="Generate authorization URL">
           <form onSubmit={generate} className="grid gap-3">
+            <Field label="Persisted client" hint="Select a saved client to use its client ID and inspect assigned application scopes.">
+              <Select value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)}>
+                <option value="">Manual client ID</option>
+                {(clients.data?.items ?? []).map((client) => (
+                  <option key={client.id} value={client.id}>{client.name} ({client.clientId})</option>
+                ))}
+              </Select>
+            </Field>
             <Field label="Client ID" hint="Use a persisted OAuth2 client from the selected tenant. Confidential clients need the one-time secret from create or rotation for token exchange.">
-              <Input name="clientId" required />
+              <Input name="clientId" value={selectedClient?.clientId ?? undefined} disabled={!!selectedClient} required={!selectedClient} />
             </Field>
+            {selectedClient && (
+              <div className="grid gap-2 rounded-md border border-line p-3 text-sm">
+                <div><span className="font-semibold">Linked application:</span> {selectedClient.resourceServerName ?? 'None'}</div>
+                <div className="grid gap-1">
+                  <span className="font-semibold">Allowed application scopes</span>
+                  {selectedClient.allowedResourcePermissions.length === 0 && <span className="text-slate-500">No application scopes assigned.</span>}
+                  {selectedClient.allowedResourcePermissions.map((permission) => (
+                    <label key={permission.id} className="flex items-center gap-2">
+                      <input type="checkbox" name="applicationScope" value={permission.name} />
+                      <span>{permission.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             <Field label="Redirect URI" hint="Must exactly match one of the persisted redirect URIs on the client.">
-              <Input name="redirectUri" defaultValue="http://127.0.0.1:8080/oauth2/demo/callback" required />
+              <Input name="redirectUri" defaultValue={selectedClient?.redirectUris[0] ?? 'http://127.0.0.1:8080/oauth2/demo/callback'} required />
             </Field>
-            <Field label="Scopes" hint="Request scopes granted to the client, such as iam.read or iam.write. Consent is shown when the client requires it.">
+            <Field label="Base scopes" hint="Use scopes explicitly configured on the client. Application scopes are selected separately above.">
               <Input name="scope" defaultValue="iam.read" />
             </Field>
             <Button type="submit">Generate</Button>

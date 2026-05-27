@@ -87,7 +87,8 @@ public class ClientController {
                 request.grantTypes(),
                 request.scopes(),
                 request.authenticationMethods(),
-                request.resourceServerId());
+                request.resourceServerId(),
+                request.resourceServerIdPresent());
         return ClientResponse.from(client);
     }
 

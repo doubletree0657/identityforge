@@ -160,7 +160,8 @@ public class ClientApplicationService {
                 grantTypes,
                 scopes,
                 authenticationMethods,
-                null);
+                null,
+                false);
     }
 
     @Transactional
@@ -175,6 +176,33 @@ public class ClientApplicationService {
             Set<String> scopes,
             Set<String> authenticationMethods,
             UUID resourceServerId) {
+        return updateClient(
+                clientId,
+                clientName,
+                status,
+                requirePkce,
+                requireConsent,
+                redirectUris,
+                grantTypes,
+                scopes,
+                authenticationMethods,
+                resourceServerId,
+                true);
+    }
+
+    @Transactional
+    public Client updateClient(
+            UUID clientId,
+            String clientName,
+            ClientStatus status,
+            Boolean requirePkce,
+            Boolean requireConsent,
+            Set<String> redirectUris,
+            Set<String> grantTypes,
+            Set<String> scopes,
+            Set<String> authenticationMethods,
+            UUID resourceServerId,
+            boolean updateResourceServer) {
         Client client = loadClient(clientId);
         configureClientSafely(
                 client,
@@ -187,9 +215,9 @@ public class ClientApplicationService {
                 grantTypes,
                 scopes,
                 authenticationMethods);
-        if (resourceServerId != null) {
+        if (updateResourceServer) {
             ResourceServer resourceServer = loadResourceServerForTenant(resourceServerId, client.getTenant().getId());
-            if (client.getResourceServer() == null || !client.getResourceServer().getId().equals(resourceServerId)) {
+            if (resourceServerChanged(client, resourceServer)) {
                 client.clearAllowedResourcePermissions();
             }
             client.setResourceServer(resourceServer);
@@ -199,6 +227,12 @@ public class ClientApplicationService {
         auditApplicationService.recordEvent(
                 savedClient.getTenant().getId(), "CLIENT_UPDATED", "CLIENT", savedClient.getId());
         return savedClient;
+    }
+
+    private boolean resourceServerChanged(Client client, ResourceServer resourceServer) {
+        UUID currentResourceServerId = client.getResourceServer() == null ? null : client.getResourceServer().getId();
+        UUID nextResourceServerId = resourceServer == null ? null : resourceServer.getId();
+        return !java.util.Objects.equals(currentResourceServerId, nextResourceServerId);
     }
 
     @Transactional(readOnly = true)

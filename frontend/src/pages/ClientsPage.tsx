@@ -203,9 +203,9 @@ export function ClientsPage() {
                   { header: 'Type', render: (client) => <Badge>{client.clientType}</Badge> },
                   { header: 'Status', render: (client) => <Badge>{client.status}</Badge> },
                   { header: 'Application', render: (client) => client.resourceServerName || '-' },
-                  { header: 'Scopes', render: (client) => client.scopes.join(', ') || '-' },
+                  { header: 'System/delegated scopes', render: (client) => client.scopes.join(', ') || '-' },
                   {
-                    header: 'Application permissions',
+                    header: 'OAuth2 application scopes',
                     render: (client) => (
                       <div className="grid min-w-[260px] gap-2">
                         <div className="flex flex-wrap gap-1">
@@ -261,17 +261,19 @@ export function ClientsPage() {
                           const form = new FormData(event.currentTarget);
                           updateClient.mutate({
                             id: client.id,
-                            body: compact({
-                              clientName: String(form.get('clientName') ?? ''),
-                              status: String(form.get('status') ?? client.status) as ClientStatus,
-                              requirePkce: form.get('requirePkce') === 'on',
-                              requireConsent: form.get('requireConsent') === 'on',
-                              redirectUris: csvToArray(String(form.get('redirectUris') ?? '')),
-                              grantTypes: csvToArray(String(form.get('grantTypes') ?? '')),
-                              scopes: csvToArray(String(form.get('scopes') ?? '')),
-                              authenticationMethods: csvToArray(String(form.get('authenticationMethods') ?? '')),
-                              resourceServerId: String(form.get('resourceServerId') ?? '') || undefined,
-                            }),
+                            body: {
+                              ...compact({
+                                clientName: String(form.get('clientName') ?? ''),
+                                status: String(form.get('status') ?? client.status) as ClientStatus,
+                                requirePkce: form.get('requirePkce') === 'on',
+                                requireConsent: form.get('requireConsent') === 'on',
+                                redirectUris: csvToArray(String(form.get('redirectUris') ?? '')),
+                                grantTypes: csvToArray(String(form.get('grantTypes') ?? '')),
+                                scopes: csvToArray(String(form.get('scopes') ?? '')),
+                                authenticationMethods: csvToArray(String(form.get('authenticationMethods') ?? '')),
+                              }),
+                              resourceServerId: String(form.get('resourceServerId') ?? ''),
+                            },
                           });
                         }}
                       >
@@ -281,12 +283,15 @@ export function ClientsPage() {
                         <Input name="grantTypes" defaultValue={arrayToCsv(client.grantTypes)} />
                         <Input name="scopes" defaultValue={arrayToCsv(client.scopes)} />
                         <Input name="authenticationMethods" defaultValue={arrayToCsv(client.authenticationMethods)} />
-                        <Select name="resourceServerId" defaultValue={client.resourceServerId ?? ''} disabled={!hasPermission('iam.resource-servers.read')}>
-                          <option value="">No linked application</option>
-                          {(resourceServers.data?.items ?? []).map((resourceServer) => (
-                            <option key={resourceServer.id} value={resourceServer.id}>{resourceServer.name}</option>
-                          ))}
-                        </Select>
+                        <div className="grid gap-1">
+                          <Select name="resourceServerId" defaultValue={client.resourceServerId ?? ''} disabled={!hasPermission('iam.resource-servers.read')}>
+                            <option value="">No linked application</option>
+                            {(resourceServers.data?.items ?? []).map((resourceServer) => (
+                              <option key={resourceServer.id} value={resourceServer.id}>{resourceServer.name}</option>
+                            ))}
+                          </Select>
+                          <p className="text-xs text-slate-500">Changing or clearing the linked application clears existing allowed application scopes.</p>
+                        </div>
                         <label className="flex items-center gap-2 text-xs"><input name="requirePkce" type="checkbox" defaultChecked={client.requirePkce} /> Require PKCE</label>
                         <label className="flex items-center gap-2 text-xs"><input name="requireConsent" type="checkbox" defaultChecked={client.requireConsent} /> Require consent</label>
                         <div className="flex gap-2">

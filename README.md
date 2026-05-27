@@ -170,7 +170,7 @@ The Admin Console is organized around relationship-aware IAM workflows:
   permissions. These application permissions are separate from the system IAM
   permissions that protect this platform's Admin APIs.
 - Link OAuth2 clients to tenant applications and allow selected application
-  permissions as client-requestable scopes.
+  permissions as client-requestable OAuth2 application scopes.
 - Review direct roles, group-derived roles, effective roles, and effective
   permissions on the user detail page.
 - Add and remove group members from the group detail page using tenant user
@@ -272,12 +272,15 @@ resource server belongs to a tenant and has its own application permissions,
 such as `payroll.employee.read` or `crm.customer.read`. These application
 permissions describe capabilities exposed by business applications. OAuth2
 clients can optionally link to a resource server and be allowed selected
-application permissions as requestable OAuth2 scopes. These are not Admin API
-permissions and are not enforced as a full external policy engine yet. Random database
-permission strings do not grant Admin API access unless they are part of the
-recognized built-in catalog. Client-credentials tokens, including local
-development service clients, do not bypass Admin RBAC; they need an explicit
-future machine-admin model before calling Admin APIs.
+application permissions as requestable OAuth2 scopes. Spring Authorization
+Server rejects unassigned application permission scopes for that client, and a
+client without a linked resource server cannot request application permission
+scopes. These are not Admin API permissions and are not enforced as a full
+external resource API policy engine yet. Random database permission strings do
+not grant Admin API access unless they are part of the recognized built-in
+catalog. Client-credentials tokens, including local development service
+clients, do not bypass Admin RBAC; they need an explicit future machine-admin
+model before calling Admin APIs.
 
 Role and permission resolution is additive and de-duplicated:
 
@@ -309,7 +312,9 @@ At a high level:
 1. Create a tenant, local user, and confidential OAuth2 client through the
    existing service/API paths. The client should use `authorization_code`,
    `client_secret_basic`, a development redirect URI such as
-   `http://127.0.0.1:8080/oauth2/demo/callback`, and the `iam.read` scope.
+   `http://127.0.0.1:8080/oauth2/demo/callback`, and the `iam.read` scope. To
+   try application scopes, link the client to an application and assign one of
+   that application's permissions to the client.
 2. Set the user's initial password through the password management service.
 3. Start a browser authorization request:
 
@@ -322,7 +327,9 @@ At a high level:
 5. If the user has an enabled verified TOTP credential, `/login/mfa` must be
    completed before the authorization request continues.
 6. If the client requires consent, `/oauth2/consent` shows the client name,
-   requested scopes, scope descriptions, and the authenticated user.
+   requested scopes, scope descriptions, and the authenticated user. Assigned
+   application permissions can appear as OAuth2 scopes; unassigned application
+   scopes are rejected as `invalid_scope`.
 7. After approval, the authorization server redirects back to the client
    redirect URI with a code. Denial returns the OAuth2 `access_denied` response.
 8. Exchange the code at `/oauth2/token` with the confidential client's

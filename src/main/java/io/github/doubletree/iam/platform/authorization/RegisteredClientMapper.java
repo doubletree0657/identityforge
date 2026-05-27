@@ -35,7 +35,8 @@ public class RegisteredClientMapper {
         client.getScopes().forEach(builder::scope);
         client.getAllowedResourcePermissions().stream()
                 .filter(permission -> client.getResourceServer() != null
-                        && permission.getResourceServer().getId().equals(client.getResourceServer().getId()))
+                        && permission.getResourceServer().getId().equals(client.getResourceServer().getId())
+                        && permission.getResourceServer().getTenant().getId().equals(client.getTenant().getId()))
                 .map(permission -> permission.getName())
                 .forEach(builder::scope);
 

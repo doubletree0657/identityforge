@@ -166,6 +166,42 @@ class RepositoryRegisteredClientRepositoryTests {
     }
 
     @Test
+    void registeredClientExcludesAllowedApplicationPermissionFromDifferentResourceServerOrTenant() {
+        Tenant tenant = tenantRepository.save(Tenant.create("Filtered Application Scope Tenant"));
+        Tenant otherTenant = tenantRepository.save(Tenant.create("Other Filtered Application Scope Tenant"));
+        ResourceServer linkedResourceServer = resourceServerRepository.save(
+                ResourceServer.create(tenant, "filtered-payroll-api", "Filtered Payroll API"));
+        ResourceServer otherResourceServer = resourceServerRepository.save(
+                ResourceServer.create(tenant, "filtered-crm-api", "Filtered CRM API"));
+        ResourceServer otherTenantResourceServer = resourceServerRepository.save(
+                ResourceServer.create(otherTenant, "filtered-external-api", "Filtered External API"));
+        ResourcePermission linkedPermission = resourcePermissionRepository.save(
+                ResourcePermission.create(linkedResourceServer, "payroll.employee.read", "Read employees", null));
+        ResourcePermission otherResourceServerPermission = resourcePermissionRepository.save(
+                ResourcePermission.create(otherResourceServer, "crm.customer.read", "Read customers", null));
+        ResourcePermission otherTenantPermission = resourcePermissionRepository.save(
+                ResourcePermission.create(otherTenantResourceServer, "external.invoice.read", "Read invoices", null));
+        Client client = Client.create(tenant, "filtered-application-client", "Filtered Application Client");
+        client.setClientSecretHash("{bcrypt}stored-client-secret-hash");
+        client.setRequirePkce(false);
+        client.setRedirectUris(Set.of("https://client.example.test/callback"));
+        client.setGrantTypes(Set.of("authorization_code"));
+        client.setScopes(Set.of("openid"));
+        client.setAuthenticationMethods(Set.of("client_secret_basic"));
+        client.setResourceServer(linkedResourceServer);
+        client.addAllowedResourcePermission(linkedPermission);
+        client.addAllowedResourcePermission(otherResourceServerPermission);
+        client.addAllowedResourcePermission(otherTenantPermission);
+        clientRepository.saveAndFlush(client);
+
+        RegisteredClient registeredClient = registeredClientRepository.findByClientId("filtered-application-client");
+
+        assertThat(registeredClient.getScopes())
+                .contains("openid", "payroll.employee.read")
+                .doesNotContain("crm.customer.read", "external.invoice.read");
+    }
+
+    @Test
     void missingClientIdReturnsNull() {
         assertThat(registeredClientRepository.findByClientId("missing-client")).isNull();
     }

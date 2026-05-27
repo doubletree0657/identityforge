@@ -16,10 +16,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.doubletree.iam.platform.application.result.ClientSecretResult;
 import io.github.doubletree.iam.platform.application.service.ClientApplicationService;
+import io.github.doubletree.iam.platform.application.service.ResourceServerApplicationService;
 import io.github.doubletree.iam.platform.application.service.SystemPermissionCatalogService;
 import io.github.doubletree.iam.platform.application.service.TenantApplicationService;
 import io.github.doubletree.iam.platform.application.service.UserApplicationService;
 import io.github.doubletree.iam.platform.domain.ClientType;
+import io.github.doubletree.iam.platform.domain.ResourcePermission;
+import io.github.doubletree.iam.platform.domain.ResourceServer;
 import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
@@ -79,6 +82,9 @@ class OAuth2AuthorizationCodeLoginFlowTests {
 
     @Autowired
     private ClientApplicationService clientApplicationService;
+
+    @Autowired
+    private ResourceServerApplicationService resourceServerApplicationService;
 
     @Autowired
     private AuditLogRepository auditLogRepository;
@@ -178,6 +184,69 @@ class OAuth2AuthorizationCodeLoginFlowTests {
         assertThat(auditLogRepository.findByAction("OAUTH2_CONSENT_DENIED")).isNotEmpty();
     }
 
+    @Test
+    void authorizationCodeFlowAllowsAssignedApplicationPermissionScope() throws Exception {
+        FlowFixture fixture = createFlowFixture();
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                fixture.client().client().getTenant().getId(), "oauth-payroll-api", "OAuth Payroll API", null);
+        ResourcePermission permission = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "payroll.employee.read", "Read employees", null);
+        clientApplicationService.updateClient(
+                fixture.client().client().getId(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                resourceServer.getId());
+        clientApplicationService.assignResourcePermissionToClient(fixture.client().client().getId(), permission.getId());
+
+        StartedAuthorization startedAuthorization = startAuthorizationRequestExpectingLogin(
+                fixture.client().client().getClientId(), "payroll.employee.read", "application-scope-state");
+        AuthenticatedSession authenticatedSession =
+                login(startedAuthorization.session(), fixture.user().getUsername());
+        String code = continueAuthorizationRequestAndExtractCode(
+                authenticatedSession.session(), authenticatedSession.authorizationRedirect(), "application-scope-state");
+        String accessToken = exchangeCodeForAccessToken(
+                fixture.client().client().getClientId(),
+                fixture.client().clientSecret(),
+                code);
+
+        Jwt jwt = jwtDecoder.decode(accessToken);
+        assertThat(jwt.getClaimAsStringList("scope")).containsExactly("payroll.employee.read");
+    }
+
+    @Test
+    void authorizationCodeFlowRejectsUnassignedApplicationPermissionScope() throws Exception {
+        FlowFixture fixture = createFlowFixture();
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                fixture.client().client().getTenant().getId(), "oauth-crm-api", "OAuth CRM API", null);
+        ResourcePermission permission = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "crm.customer.read", "Read customers", null);
+        clientApplicationService.updateClient(
+                fixture.client().client().getId(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                resourceServer.getId());
+        clientApplicationService.assignResourcePermissionToClient(fixture.client().client().getId(), permission.getId());
+
+        String redirectUrl = startAuthorizationRequestExpectingOAuth2Error(
+                fixture.client().client().getClientId(), "crm.customer.write", "unassigned-application-scope-state");
+
+        var queryParams = UriComponentsBuilder.fromUriString(redirectUrl).build().getQueryParams();
+        assertThat(queryParams.getFirst("error")).isEqualTo("invalid_scope");
+        assertThat(queryParams.getFirst("code")).isNull();
+    }
+
     private FlowFixture createFlowFixture() {
         return createFlowFixture(false);
     }
@@ -219,6 +288,18 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                 .andReturn();
 
         return new StartedAuthorization((MockHttpSession) result.getRequest().getSession(false));
+    }
+
+    private String startAuthorizationRequestExpectingOAuth2Error(
+            String clientId,
+            String scope,
+            String state) throws Exception {
+        MvcResult result = mockMvc.perform(get(authorizationRequest(clientId, scope, state))
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, startsWith(REDIRECT_URI + "?")))
+                .andReturn();
+        return result.getResponse().getRedirectedUrl();
     }
 
     private AuthenticatedSession login(MockHttpSession session, String username) throws Exception {
