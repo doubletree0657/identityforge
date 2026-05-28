@@ -267,8 +267,13 @@ Completed slices:
 - OAuth2 clients can optionally link to a tenant resource server and allow
   selected application permissions as OAuth2 application scopes. Assigned
   application permission scopes can be requested by that client, while
-  unassigned application scopes are rejected by token issuance. Full external
-  resource API policy enforcement remains future work.
+  unassigned application scopes are rejected by token issuance.
+- Demo Payroll resource API under `/demo-resource-api/**` verifies issued
+  application scopes with concrete Spring Security authorities:
+  `payroll.employee.read` protects employee reads, `payroll.salary.read`
+  protects salary reads, and `payroll.salary.write` protects salary writes.
+  This is an in-server portfolio slice for the OAuth2 resource-server flow, not
+  a full external policy engine or production business application.
 - Clearer user lifecycle controls for `PENDING`, `ACTIVE`, `DISABLED`, and
   `LOCKED`, plus status-change audit events.
 - TOTP enrollment UX with one-time setup secret display, `otpauth://` URI, and
@@ -280,7 +285,8 @@ Candidate slices:
 - Production authentication and session model.
 - Machine-admin authorization for service clients that need non-SCIM Admin API
   access.
-- Full policy engine design and external application token enforcement.
+- Full policy engine design and separate production-grade resource service
+  enforcement.
 - Safe delete/archive workflows where domain ownership and cascade behavior are
   explicitly designed.
 - Designed login, consent, and MFA challenge screens.

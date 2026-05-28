@@ -171,6 +171,12 @@ The Admin Console is organized around relationship-aware IAM workflows:
   permissions that protect this platform's Admin APIs.
 - Link OAuth2 clients to tenant applications and allow selected application
   permissions as client-requestable OAuth2 application scopes.
+- Use the OAuth2 demo page to request allowed application scopes and call the
+  protected demo Payroll resource API:
+  `GET /demo-resource-api/payroll/employees` requires
+  `payroll.employee.read`, `GET /demo-resource-api/payroll/salaries` requires
+  `payroll.salary.read`, and `POST /demo-resource-api/payroll/salaries`
+  requires `payroll.salary.write`.
 - Review direct roles, group-derived roles, effective roles, and effective
   permissions on the user detail page.
 - Add and remove group members from the group detail page using tenant user
@@ -209,6 +215,20 @@ Local services:
 - Redis: `localhost:6379`
 
 The Docker Compose credentials are local development values only.
+
+## Demo Resource API
+
+The project includes a small static Payroll API under `/demo-resource-api/**`
+to demonstrate the complete OAuth2 application-permission loop. A tenant-owned
+application can define permissions, an OAuth2 client can be allowed to request
+those permissions as scopes, Spring Authorization Server can issue those
+scopes, and the demo resource endpoints enforce the resulting
+`SCOPE_payroll.*` authorities.
+
+This demo API intentionally does not store real payroll data and is not a full
+external policy engine. Production deployments would usually protect separate
+resource services with their own resource-server configuration instead of
+serving static demo business endpoints from the IAM server.
 
 ## API Documentation
 

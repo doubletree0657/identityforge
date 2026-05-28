@@ -3,12 +3,16 @@ package io.github.doubletree.iam.platform.bootstrap;
 import io.github.doubletree.iam.platform.domain.Client;
 import io.github.doubletree.iam.platform.domain.ClientStatus;
 import io.github.doubletree.iam.platform.domain.ClientType;
+import io.github.doubletree.iam.platform.domain.ResourcePermission;
+import io.github.doubletree.iam.platform.domain.ResourceServer;
 import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
 import io.github.doubletree.iam.platform.application.service.SystemPermissionCatalogService;
 import io.github.doubletree.iam.platform.application.service.UserApplicationService;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
+import io.github.doubletree.iam.platform.repository.ResourcePermissionRepository;
+import io.github.doubletree.iam.platform.repository.ResourceServerRepository;
 import io.github.doubletree.iam.platform.repository.RoleRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
@@ -32,9 +36,15 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     static final String DEVELOPMENT_CLIENT_NAME = "International IAM Dev Client";
     static final String ADMIN_CONSOLE_CLIENT_ID = "iam-admin-console";
     static final String ADMIN_CONSOLE_CLIENT_NAME = "IAM Admin Console";
+    static final String PAYROLL_RESOURCE_SERVER_IDENTIFIER = "payroll-api";
+    static final String PAYROLL_RESOURCE_SERVER_NAME = "Payroll API";
     static final String ADMIN_ROLE_NAME = SystemPermissionCatalogService.PLATFORM_ADMIN_ROLE_NAME;
     static final String ADMIN_DISPLAY_NAME = "Development Super Admin";
     private static final String DEVELOPMENT_CLIENT_SECRET = "secret";
+    private static final Set<String> PAYROLL_PERMISSION_NAMES = Set.of(
+            "payroll.employee.read",
+            "payroll.salary.read",
+            "payroll.salary.write");
 
     private static final Set<String> DEVELOPMENT_REDIRECT_URIS = Set.of(
             "http://127.0.0.1:8080/oauth2/demo/callback",
@@ -48,6 +58,8 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     private static final Set<String> ADMIN_CONSOLE_AUTHENTICATION_METHODS = Set.of("none");
     private final TenantRepository tenantRepository;
     private final ClientRepository clientRepository;
+    private final ResourceServerRepository resourceServerRepository;
+    private final ResourcePermissionRepository resourcePermissionRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final SystemPermissionCatalogService systemPermissionCatalogService;
@@ -61,6 +73,8 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     public DevelopmentDataBootstrap(
             TenantRepository tenantRepository,
             ClientRepository clientRepository,
+            ResourceServerRepository resourceServerRepository,
+            ResourcePermissionRepository resourcePermissionRepository,
             UserRepository userRepository,
             RoleRepository roleRepository,
             SystemPermissionCatalogService systemPermissionCatalogService,
@@ -72,6 +86,8 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
             @Value("${app.bootstrap.admin.reset-password:false}") boolean resetAdminPassword) {
         this.tenantRepository = tenantRepository;
         this.clientRepository = clientRepository;
+        this.resourceServerRepository = resourceServerRepository;
+        this.resourcePermissionRepository = resourcePermissionRepository;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.systemPermissionCatalogService = systemPermissionCatalogService;
@@ -93,15 +109,16 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     public void initialize() {
         Tenant tenant = tenantRepository.findBySlug(DEVELOPMENT_TENANT_SLUG)
                 .orElseGet(this::createDevelopmentTenant);
+        ResourceServer payrollResourceServer = initializePayrollResourceServer(tenant);
         List<Client> existingClients = clientRepository.findAllByClientId(DEVELOPMENT_CLIENT_ID);
         if (existingClients.isEmpty()) {
-            createDevelopmentClient(tenant);
+            createDevelopmentClient(tenant, payrollResourceServer);
         } else {
             existingClients.stream()
                     .filter(client -> client.getTenant().getId().equals(tenant.getId()))
                     .findFirst()
                     .or(() -> existingClients.stream().findFirst())
-                    .ifPresent(this::refreshDevelopmentClient);
+                    .ifPresent(client -> refreshDevelopmentClient(client, payrollResourceServer));
         }
         initializeAdminConsoleClient(tenant);
         systemPermissionCatalogService.seedRoleTemplates(tenant);
@@ -116,12 +133,12 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
         return tenantRepository.save(tenant);
     }
 
-    private void createDevelopmentClient(Tenant tenant) {
+    private void createDevelopmentClient(Tenant tenant, ResourceServer payrollResourceServer) {
         Client client = Client.create(tenant, DEVELOPMENT_CLIENT_ID, DEVELOPMENT_CLIENT_NAME);
-        refreshDevelopmentClient(client);
+        refreshDevelopmentClient(client, payrollResourceServer);
     }
 
-    private void refreshDevelopmentClient(Client client) {
+    private void refreshDevelopmentClient(Client client, ResourceServer payrollResourceServer) {
         client.setClientName(DEVELOPMENT_CLIENT_NAME);
         client.setClientType(ClientType.CONFIDENTIAL);
         client.setStatus(ClientStatus.ACTIVE);
@@ -131,12 +148,46 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
         client.setGrantTypes(DEVELOPMENT_GRANT_TYPES);
         client.setScopes(DEVELOPMENT_SCOPES);
         client.setAuthenticationMethods(DEVELOPMENT_AUTHENTICATION_METHODS);
+        client.setResourceServer(payrollResourceServer);
+        client.clearAllowedResourcePermissions();
+        resourcePermissionRepository.findByResourceServerId(payrollResourceServer.getId())
+                .forEach(client::addAllowedResourcePermission);
         if (client.getClientSecretHash() == null
                 || !passwordEncoder.matches(DEVELOPMENT_CLIENT_SECRET, client.getClientSecretHash())) {
             client.setClientSecretHash(passwordEncoder.encode(DEVELOPMENT_CLIENT_SECRET));
         }
         client.validateRegistration();
         clientRepository.save(client);
+    }
+
+    private ResourceServer initializePayrollResourceServer(Tenant tenant) {
+        ResourceServer resourceServer = resourceServerRepository.findByTenantIdAndIdentifier(
+                        tenant.getId(), PAYROLL_RESOURCE_SERVER_IDENTIFIER)
+                .orElseGet(() -> resourceServerRepository.save(
+                        ResourceServer.create(tenant, PAYROLL_RESOURCE_SERVER_IDENTIFIER, PAYROLL_RESOURCE_SERVER_NAME)));
+        resourceServer.setName(PAYROLL_RESOURCE_SERVER_NAME);
+        resourceServer.setDescription("Development demo resource server for OAuth2 application scope enforcement.");
+        ResourceServer saved = resourceServerRepository.save(resourceServer);
+        PAYROLL_PERMISSION_NAMES.forEach(permissionName -> initializePayrollPermission(saved, permissionName));
+        return saved;
+    }
+
+    private void initializePayrollPermission(ResourceServer resourceServer, String permissionName) {
+        resourcePermissionRepository.findByResourceServerIdAndName(resourceServer.getId(), permissionName)
+                .orElseGet(() -> resourcePermissionRepository.save(ResourcePermission.create(
+                        resourceServer,
+                        permissionName,
+                        displayName(permissionName),
+                        "Allows demo access for " + permissionName + ".")));
+    }
+
+    private String displayName(String permissionName) {
+        return switch (permissionName) {
+            case "payroll.employee.read" -> "Read payroll employees";
+            case "payroll.salary.read" -> "Read payroll salaries";
+            case "payroll.salary.write" -> "Write payroll salaries";
+            default -> permissionName;
+        };
     }
 
     private void initializeAdminConsoleClient(Tenant tenant) {

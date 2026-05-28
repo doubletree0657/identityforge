@@ -106,7 +106,8 @@ public class AuthorizationServerConfiguration {
             throws Exception {
         RequestMatcher apiEndpointsMatcher = new OrRequestMatcher(
                 AntPathRequestMatcher.antMatcher("/api/**"),
-                AntPathRequestMatcher.antMatcher("/scim/v2/**"));
+                AntPathRequestMatcher.antMatcher("/scim/v2/**"),
+                AntPathRequestMatcher.antMatcher("/demo-resource-api/**"));
 
         http
                 .authorizeHttpRequests(authorize -> authorize
@@ -121,6 +122,13 @@ public class AuthorizationServerConfiguration {
                         .requestMatchers("/api/**").access(new AdminApiAuthorizationManager("iam.read"))
                         .requestMatchers(HttpMethod.POST, "/scim/v2/**").hasAuthority("SCOPE_iam.write")
                         .requestMatchers("/scim/v2/**").hasAuthority("SCOPE_iam.read")
+                        .requestMatchers(HttpMethod.GET, "/demo-resource-api/payroll/employees")
+                        .hasAuthority("SCOPE_payroll.employee.read")
+                        .requestMatchers(HttpMethod.GET, "/demo-resource-api/payroll/salaries")
+                        .hasAuthority("SCOPE_payroll.salary.read")
+                        .requestMatchers(HttpMethod.POST, "/demo-resource-api/payroll/salaries")
+                        .hasAuthority("SCOPE_payroll.salary.write")
+                        .requestMatchers("/demo-resource-api/**").authenticated()
                         .anyRequest().permitAll())
                 .formLogin(form -> form
                         .loginPage("/login")

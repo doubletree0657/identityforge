@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.doubletree.iam.platform.domain.Client;
 import io.github.doubletree.iam.platform.domain.ClientStatus;
 import io.github.doubletree.iam.platform.domain.ClientType;
+import io.github.doubletree.iam.platform.domain.ResourcePermission;
+import io.github.doubletree.iam.platform.domain.ResourceServer;
 import io.github.doubletree.iam.platform.domain.Role;
 import io.github.doubletree.iam.platform.domain.Tenant;
 import io.github.doubletree.iam.platform.domain.User;
@@ -13,6 +15,8 @@ import io.github.doubletree.iam.platform.application.service.SystemPermissionCat
 import io.github.doubletree.iam.platform.application.service.UserApplicationService;
 import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.repository.PermissionRepository;
+import io.github.doubletree.iam.platform.repository.ResourcePermissionRepository;
+import io.github.doubletree.iam.platform.repository.ResourceServerRepository;
 import io.github.doubletree.iam.platform.repository.RoleRepository;
 import io.github.doubletree.iam.platform.repository.TenantRepository;
 import io.github.doubletree.iam.platform.repository.UserRepository;
@@ -68,6 +72,12 @@ class DevelopmentDataBootstrapTests {
     private PermissionRepository permissionRepository;
 
     @Autowired
+    private ResourceServerRepository resourceServerRepository;
+
+    @Autowired
+    private ResourcePermissionRepository resourcePermissionRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @DynamicPropertySource
@@ -97,6 +107,11 @@ class DevelopmentDataBootstrapTests {
         assertThat(client.getGrantTypes()).containsExactlyInAnyOrder("client_credentials", "authorization_code");
         assertThat(client.getScopes()).containsExactlyInAnyOrder("iam.read", "iam.write");
         assertThat(client.getAuthenticationMethods()).containsExactly("client_secret_basic");
+        assertThat(client.getResourceServer().getIdentifier())
+                .isEqualTo(DevelopmentDataBootstrap.PAYROLL_RESOURCE_SERVER_IDENTIFIER);
+        assertThat(client.getAllowedResourcePermissions())
+                .extracting(ResourcePermission::getName)
+                .containsExactlyInAnyOrder("payroll.employee.read", "payroll.salary.read", "payroll.salary.write");
         assertThat(client.getRedirectUris())
                 .containsExactlyInAnyOrder(
                         "http://127.0.0.1:8080/oauth2/demo/callback",
@@ -152,5 +167,23 @@ class DevelopmentDataBootstrapTests {
                 .getContent()).hasSize(17);
         assertThat(userRepository.findByUsername("admin")).hasSize(1);
         assertThat(clientRepository.findAllByClientId(DevelopmentDataBootstrap.ADMIN_CONSOLE_CLIENT_ID)).hasSize(1);
+    }
+
+    @Test
+    void devBootstrapSeedsPayrollApplicationPermissionsIdempotently() {
+        bootstrap.initialize();
+        bootstrap.initialize();
+
+        Tenant tenant = tenantRepository.findBySlug(DevelopmentDataBootstrap.DEVELOPMENT_TENANT_SLUG)
+                .orElseThrow();
+        ResourceServer resourceServer = resourceServerRepository.findByTenantIdAndIdentifier(
+                        tenant.getId(), DevelopmentDataBootstrap.PAYROLL_RESOURCE_SERVER_IDENTIFIER)
+                .orElseThrow();
+
+        assertThat(resourceServer.getName()).isEqualTo(DevelopmentDataBootstrap.PAYROLL_RESOURCE_SERVER_NAME);
+        assertThat(resourcePermissionRepository.findByResourceServerId(resourceServer.getId()))
+                .extracting(ResourcePermission::getName)
+                .containsExactlyInAnyOrder("payroll.employee.read", "payroll.salary.read", "payroll.salary.write");
+        assertThat(resourcePermissionRepository.findAll()).hasSize(3);
     }
 }

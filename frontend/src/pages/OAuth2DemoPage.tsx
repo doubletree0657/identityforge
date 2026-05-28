@@ -12,6 +12,7 @@ import { PageHeader } from './PageHeader';
 export function OAuth2DemoPage() {
   const [authorizationUrl, setAuthorizationUrl] = useState('');
   const [tokenCommand, setTokenCommand] = useState('');
+  const [resourceCommands, setResourceCommands] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const { selectedTenantId } = useTenantContext();
   const clients = useQuery({
@@ -43,6 +44,24 @@ export function OAuth2DemoPage() {
   -d 'grant_type=authorization_code' \\
   -d 'code=<authorization-code>' \\
   -d 'redirect_uri=${redirectUri}'`);
+    setResourceCommands(resourceApiCommands(baseUrl, applicationScopes));
+  }
+
+  function resourceApiCommands(baseUrl: string, applicationScopes: string[]) {
+    const commands: string[] = [];
+    if (applicationScopes.includes('payroll.employee.read')) {
+      commands.push(`curl -H "Authorization: Bearer <ACCESS_TOKEN>" \\
+  ${baseUrl}/demo-resource-api/payroll/employees`);
+    }
+    if (applicationScopes.includes('payroll.salary.read')) {
+      commands.push(`curl -H "Authorization: Bearer <ACCESS_TOKEN>" \\
+  ${baseUrl}/demo-resource-api/payroll/salaries`);
+    }
+    if (applicationScopes.includes('payroll.salary.write')) {
+      commands.push(`curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
+  ${baseUrl}/demo-resource-api/payroll/salaries`);
+    }
+    return commands.join('\n\n');
   }
 
   return (
@@ -67,6 +86,7 @@ export function OAuth2DemoPage() {
             </Field>
             {selectedClient && (
               <div className="grid gap-2 rounded-md border border-line p-3 text-sm">
+                <div><span className="font-semibold">Selected client:</span> {selectedClient.name} ({selectedClient.clientId})</div>
                 <div><span className="font-semibold">Linked application:</span> {selectedClient.resourceServerName ?? 'None'}</div>
                 <div className="grid gap-1">
                   <span className="font-semibold">Allowed application scopes</span>
@@ -115,6 +135,12 @@ export function OAuth2DemoPage() {
                 <div className="text-sm font-semibold">Token exchange command</div>
                 <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">{tokenCommand}</pre>
               </div>
+              {resourceCommands && (
+                <div>
+                  <div className="text-sm font-semibold">Resource API curl commands</div>
+                  <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">{resourceCommands}</pre>
+                </div>
+              )}
             </div>
           )}
         </Card>
