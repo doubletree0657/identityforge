@@ -267,6 +267,41 @@ external policy engine. Production deployments would usually protect separate
 resource services with their own resource-server configuration instead of
 serving static demo business endpoints from the IAM server.
 
+## Token Lifecycle and Consents
+
+Confidential authorization-code clients can include the `refresh_token` grant.
+The dev `International IAM Dev Client` is configured this way for local demos,
+while the public `iam-admin-console` PKCE client intentionally does not receive
+refresh tokens. Public clients are rejected if configured with `refresh_token`,
+and client-credentials-only clients cannot use refresh tokens.
+
+Refresh-token requests can mint new access tokens for scopes that remain within
+the original authorization and the client's configured/allowed scopes.
+Application permission scopes still come only from the linked resource server
+permissions explicitly allowed on the OAuth2 client; refresh does not make
+arbitrary scopes valid.
+
+The standard OAuth2 revocation endpoint is available at `/oauth2/revoke`.
+Clients can revoke supported tokens, including refresh tokens, and a revoked
+refresh token cannot be used again in the running authorization server process.
+Unknown or unsupported token revocation follows OAuth2 behavior and returns a
+successful response without exposing token details.
+
+Stored OAuth2 consent grants can be viewed and revoked safely:
+
+- `GET /api/oauth2/consents?userId=<user-id>`
+- `GET /api/oauth2/consents/me`
+- `DELETE /api/oauth2/consents/{clientId}?userId=<user-id>`
+- `DELETE /api/oauth2/consents/me/{clientId}`
+
+Consent responses include client identity, user identity, scopes, and the linked
+application name when available. They never include access tokens, refresh
+tokens, authorization codes, raw client secrets, or client secret hashes. Consent
+storage is JDBC-backed; authorization/token storage remains in-process in this
+foundation slice, so distributed production token/session hardening remains
+future work. Audit logs record token refresh, token revocation, and consent
+revocation events without token or secret values.
+
 ## API Documentation
 
 After the application starts:

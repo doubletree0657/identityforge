@@ -253,6 +253,135 @@ class OAuth2AuthorizationCodeLoginFlowTests {
     }
 
     @Test
+    void authorizationCodeClientReceivesRefreshTokenAndCanRefreshAccessToken() throws Exception {
+        FlowFixture fixture = createFlowFixture();
+
+        TokenResponse initialToken = completeAuthorizationCodeFlow(
+                fixture, "iam.read iam.write", "refresh-token-state");
+        assertThat(initialToken.accessToken()).isNotBlank();
+        assertThat(initialToken.refreshToken()).isNotBlank();
+
+        TokenResponse refreshedToken = refreshAccessToken(
+                fixture.client().client().getClientId(),
+                fixture.client().clientSecret(),
+                initialToken.refreshToken(),
+                "iam.read");
+
+        assertThat(refreshedToken.accessToken()).isNotBlank();
+        assertThat(refreshedToken.refreshToken()).isNotBlank();
+        assertThat(jwtDecoder.decode(refreshedToken.accessToken()).getClaimAsStringList("scope"))
+                .containsExactly("iam.read");
+        assertThat(auditLogRepository.findByAction("OAUTH2_TOKEN_REFRESHED")).isNotEmpty();
+    }
+
+    @Test
+    void refreshTokenCannotExpandBeyondOriginalOrAllowedScopesAndCanBeRevoked() throws Exception {
+        FlowFixture fixture = createFlowFixture();
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                fixture.client().client().getTenant().getId(), "oauth-refresh-payroll-api", "OAuth Refresh Payroll API", null);
+        ResourcePermission employeeRead = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "payroll.employee.read", "Read employees", null);
+        ResourcePermission salaryRead = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "payroll.salary.read", "Read salaries", null);
+        clientApplicationService.updateClient(
+                fixture.client().client().getId(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                resourceServer.getId());
+        clientApplicationService.assignResourcePermissionToClient(fixture.client().client().getId(), employeeRead.getId());
+        clientApplicationService.assignResourcePermissionToClient(fixture.client().client().getId(), salaryRead.getId());
+
+        TokenResponse initialToken = completeAuthorizationCodeFlow(
+                fixture, "payroll.employee.read", "refresh-application-scope-state");
+
+        mockMvc.perform(post("/oauth2/token")
+                        .with(httpBasic(fixture.client().client().getClientId(), fixture.client().clientSecret()))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "refresh_token")
+                        .param("refresh_token", initialToken.refreshToken())
+                        .param("scope", "payroll.salary.read"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_scope"));
+
+        mockMvc.perform(post("/oauth2/revoke")
+                        .with(httpBasic(fixture.client().client().getClientId(), fixture.client().clientSecret()))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("token", initialToken.refreshToken())
+                        .param("token_type_hint", "refresh_token"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/oauth2/token")
+                        .with(httpBasic(fixture.client().client().getClientId(), fixture.client().clientSecret()))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "refresh_token")
+                        .param("refresh_token", initialToken.refreshToken()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_grant"));
+        assertThat(auditLogRepository.findByAction("OAUTH2_TOKEN_REVOKED")).isNotEmpty();
+    }
+
+    @Test
+    void consentCanBeListedAndRevokedSafely() throws Exception {
+        auditLogRepository.deleteAll();
+        FlowFixture fixture = createFlowFixture(true);
+
+        StartedAuthorization startedAuthorization = startAuthorizationRequestExpectingLogin(
+                fixture.client().client().getClientId(), "iam.read iam.write", "consent-management-state");
+        AuthenticatedSession authenticatedSession =
+                login(startedAuthorization.session(), fixture.user().getUsername());
+        String consentUrl = expectConsentRedirect(
+                authenticatedSession.session(), authenticatedSession.authorizationRedirect());
+        String approvalRedirect = submitConsent(
+                authenticatedSession.session(), consentUrl, fixture.client().client().getClientId(), true);
+        String code = extractCode(approvalRedirect, "consent-management-state");
+        TokenResponse token = exchangeCodeForTokenResponse(
+                fixture.client().client().getClientId(),
+                fixture.client().clientSecret(),
+                code);
+
+        MvcResult listResult = mockMvc.perform(get("/api/oauth2/consents")
+                        .param("userId", fixture.user().getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].clientId").value(fixture.client().client().getClientId()))
+                .andExpect(jsonPath("$[0].clientName").value("OAuth Flow Demo Client"))
+                .andExpect(jsonPath("$[0].scopes").isArray())
+                .andExpect(jsonPath("$[0].accessToken").doesNotExist())
+                .andExpect(jsonPath("$[0].refreshToken").doesNotExist())
+                .andExpect(jsonPath("$[0].clientSecret").doesNotExist())
+                .andReturn();
+        assertThat(listResult.getResponse().getContentAsString())
+                .doesNotContain(token.accessToken(), token.refreshToken(), fixture.client().clientSecret());
+
+        mockMvc.perform(get("/api/oauth2/consents/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].clientId").value(fixture.client().client().getClientId()));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/oauth2/consents/{clientId}", fixture.client().client().getClientId())
+                        .param("userId", fixture.user().getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.accessToken()))
+                .andExpect(status().isNoContent());
+
+        String secondConsentUrl = expectConsentRedirect(
+                authenticatedSession.session(),
+                authorizationRequest(fixture.client().client().getClientId(), "iam.read", "consent-required-again"));
+        assertThat(secondConsentUrl).contains("/oauth2/consent?");
+        assertThat(auditLogRepository.findByAction("OAUTH2_CONSENT_REVOKED")).isNotEmpty();
+        assertThat(auditLogRepository.findAll()).allSatisfy(auditLog -> {
+            assertThat(auditLog.getAction()).doesNotContain(token.accessToken(), token.refreshToken());
+            assertThat(auditLog.getResourceType()).doesNotContain(fixture.client().clientSecret());
+        });
+    }
+
+    @Test
     void authorizationCodeFlowIssuesPayrollScopesThatProtectDemoResourceApi() throws Exception {
         FlowFixture fixture = createFlowFixture();
         ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
@@ -348,11 +477,27 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                 false,
                 requireConsent,
                 Set.of(REDIRECT_URI),
-                Set.of("authorization_code"),
+                Set.of("authorization_code", "refresh_token"),
                 Set.of("iam.read", "iam.write"),
                 Set.of("client_secret_basic"));
 
         return new FlowFixture(user, client);
+    }
+
+    private TokenResponse completeAuthorizationCodeFlow(
+            FlowFixture fixture,
+            String scope,
+            String state) throws Exception {
+        StartedAuthorization startedAuthorization = startAuthorizationRequestExpectingLogin(
+                fixture.client().client().getClientId(), scope, state);
+        AuthenticatedSession authenticatedSession =
+                login(startedAuthorization.session(), fixture.user().getUsername());
+        String code = continueAuthorizationRequestAndExtractCode(
+                authenticatedSession.session(), authenticatedSession.authorizationRedirect(), state);
+        return exchangeCodeForTokenResponse(
+                fixture.client().client().getClientId(),
+                fixture.client().clientSecret(),
+                code);
     }
 
     private StartedAuthorization startAuthorizationRequestExpectingLogin(
@@ -480,6 +625,10 @@ class OAuth2AuthorizationCodeLoginFlowTests {
     }
 
     private String exchangeCodeForAccessToken(String clientId, String clientSecret, String code) throws Exception {
+        return exchangeCodeForTokenResponse(clientId, clientSecret, code).accessToken();
+    }
+
+    private TokenResponse exchangeCodeForTokenResponse(String clientId, String clientSecret, String code) throws Exception {
         MvcResult result = mockMvc.perform(post("/oauth2/token")
                         .with(httpBasic(clientId, clientSecret))
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
@@ -493,7 +642,34 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                 .andReturn();
 
         JsonNode tokenResponse = objectMapper.readTree(result.getResponse().getContentAsString());
-        return tokenResponse.get("access_token").asText();
+        return new TokenResponse(
+                tokenResponse.get("access_token").asText(),
+                tokenResponse.has("refresh_token") ? tokenResponse.get("refresh_token").asText() : null);
+    }
+
+    private TokenResponse refreshAccessToken(
+            String clientId,
+            String clientSecret,
+            String refreshToken,
+            String scope) throws Exception {
+        var request = post("/oauth2/token")
+                .with(httpBasic(clientId, clientSecret))
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .param("grant_type", "refresh_token")
+                .param("refresh_token", refreshToken);
+        if (scope != null) {
+            request.param("scope", scope);
+        }
+        MvcResult result = mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.access_token").isNotEmpty())
+                .andExpect(jsonPath("$.token_type").value("Bearer"))
+                .andReturn();
+
+        JsonNode tokenResponse = objectMapper.readTree(result.getResponse().getContentAsString());
+        return new TokenResponse(
+                tokenResponse.get("access_token").asText(),
+                tokenResponse.has("refresh_token") ? tokenResponse.get("refresh_token").asText() : null);
     }
 
     private String extractCode(String redirectUrl, String expectedState) {
@@ -524,5 +700,8 @@ class OAuth2AuthorizationCodeLoginFlowTests {
     }
 
     private record AuthenticatedSession(MockHttpSession session, String authorizationRedirect) {
+    }
+
+    private record TokenResponse(String accessToken, String refreshToken) {
     }
 }

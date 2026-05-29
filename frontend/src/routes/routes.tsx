@@ -13,6 +13,7 @@ import { IamWorkflowPage } from '../pages/IamWorkflowPage';
 import { LoginPage } from '../pages/LoginPage';
 import { MfaPage } from '../pages/MfaPage';
 import { OAuth2CallbackPage } from '../pages/OAuth2CallbackPage';
+import { OAuth2ConsentsPage } from '../pages/OAuth2ConsentsPage';
 import { OAuth2DemoPage } from '../pages/OAuth2DemoPage';
 import { PermissionsPage } from '../pages/PermissionsPage';
 import { RolesPage } from '../pages/RolesPage';
@@ -37,6 +38,7 @@ export const routes: RouteObject[] = [
       { path: '/permissions', element: <PermissionsPage /> },
       { path: '/applications', element: <ApplicationsPage /> },
       { path: '/clients', element: <ClientsPage /> },
+      { path: '/oauth2-consents', element: <OAuth2ConsentsPage /> },
       { path: '/mfa', element: <MfaPage /> },
       { path: '/audit-logs', element: <AuditLogsPage /> },
       { path: '/iam-workflow', element: <IamWorkflowPage /> },

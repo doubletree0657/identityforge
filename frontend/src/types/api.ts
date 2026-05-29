@@ -158,6 +158,15 @@ export interface ClientSecretResponse {
   clientSecret?: string;
 }
 
+export interface OAuth2ConsentResponse {
+  userId: string;
+  username: string;
+  clientId: string;
+  clientName: string;
+  scopes: string[];
+  resourceServerName?: string;
+}
+
 export interface MfaEnrollmentResponse {
   userId: string;
   secret: string;

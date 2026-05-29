@@ -1299,6 +1299,38 @@ class ApplicationServiceTests {
                         Set.of("client_secret_basic")))
                 .isInstanceOf(ClientValidationException.class)
                 .hasMessage("Public clients must not use client secret authentication");
+        assertThatThrownBy(() -> clientApplicationService.createClientWithSecret(
+                        tenant.getId(),
+                        "public-refresh-token",
+                        "Public Refresh Token",
+                        ClientType.PUBLIC,
+                        true,
+                        false,
+                        Set.of("https://public-refresh.example.test/callback"),
+                        Set.of("authorization_code", "refresh_token"),
+                        Set.of("openid"),
+                        Set.of("none")))
+                .isInstanceOf(ClientValidationException.class)
+                .hasMessage("Public clients must not use refresh tokens");
+    }
+
+    @Test
+    void refreshTokenGrantRequiresAuthorizationCodeClient() {
+        Tenant tenant = tenantApplicationService.createTenant("Refresh Token Validation Tenant");
+
+        assertThatThrownBy(() -> clientApplicationService.createClientWithSecret(
+                        tenant.getId(),
+                        "client-credentials-refresh",
+                        "Client Credentials Refresh",
+                        ClientType.CONFIDENTIAL,
+                        false,
+                        false,
+                        Set.of(),
+                        Set.of("client_credentials", "refresh_token"),
+                        Set.of("iam.read"),
+                        Set.of("client_secret_basic")))
+                .isInstanceOf(ClientValidationException.class)
+                .hasMessage("Refresh token clients must also support authorization_code");
     }
 
     @Test

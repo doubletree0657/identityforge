@@ -77,6 +77,7 @@ export function ClientsPage() {
       label: 'Admin Console SPA / Public PKCE Client',
       clientType: 'PUBLIC' as ClientType,
       grantType: 'authorization_code',
+      includeRefreshToken: false,
       requirePkce: true,
       requireConsent: false,
       redirectUris: 'http://localhost:5173/oauth2/callback',
@@ -86,6 +87,7 @@ export function ClientsPage() {
       label: 'Backend Service / Confidential Client Credentials Client',
       clientType: 'CONFIDENTIAL' as ClientType,
       grantType: 'client_credentials',
+      includeRefreshToken: false,
       requirePkce: false,
       requireConsent: false,
       redirectUris: '',
@@ -95,6 +97,7 @@ export function ClientsPage() {
       label: 'Web App / Confidential Authorization Code Client',
       clientType: 'CONFIDENTIAL' as ClientType,
       grantType: 'authorization_code',
+      includeRefreshToken: true,
       requirePkce: true,
       requireConsent: true,
       redirectUris: 'http://localhost:8080/oauth2/demo/callback',
@@ -116,7 +119,12 @@ export function ClientsPage() {
       requirePkce: selectedType === 'PUBLIC' || form.get('requirePkce') === 'on',
       requireConsent: form.get('requireConsent') === 'on',
       redirectUris: csvToArray(String(form.get('redirectUris') ?? '')),
-      grantTypes: [selectedGrant],
+      grantTypes: [
+        selectedGrant,
+        ...(form.get('includeRefreshToken') === 'on' && selectedGrant === 'authorization_code' && selectedType === 'CONFIDENTIAL'
+          ? ['refresh_token']
+          : []),
+      ],
       scopes: csvToArray(String(form.get('scopes') ?? '')),
       authenticationMethods: [selectedType === 'PUBLIC' ? 'none' : 'client_secret_basic'],
       resourceServerId: String(form.get('resourceServerId') ?? '') || undefined,
@@ -167,6 +175,16 @@ export function ClientsPage() {
                 <option value="client_credentials">client_credentials</option>
               </Select>
             </Field>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                key={`${template}-refresh`}
+                name="includeRefreshToken"
+                type="checkbox"
+                defaultChecked={selectedTemplate.includeRefreshToken && clientType === 'CONFIDENTIAL'}
+                disabled={clientType !== 'CONFIDENTIAL' || grantType !== 'authorization_code'}
+              />
+              Enable refresh_token grant
+            </label>
             <Field label="Redirect URIs" hint="Required for authorization_code because the authorization server sends the browser back to this URI.">
               <Textarea key={`${template}-redirects`} name="redirectUris" defaultValue={selectedTemplate.redirectUris} placeholder="https://app.example.test/callback" required={grantType === 'authorization_code'} />
             </Field>

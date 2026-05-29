@@ -7,6 +7,7 @@ import {
   GroupResponse,
   MfaEnrollmentResponse,
   MfaStatusResponse,
+  OAuth2ConsentResponse,
   PageResponse,
   PermissionResponse,
   QueryParams,
@@ -25,7 +26,7 @@ import {
   ClientStatus,
 } from '../types/api';
 
-const cleanParams = (params?: QueryParams) =>
+const cleanParams = (params?: object) =>
   Object.fromEntries(Object.entries(params ?? {}).filter(([, value]) => value !== undefined && value !== ''));
 
 export const adminApi = {
@@ -151,6 +152,15 @@ export const adminApi = {
       apiRequest<ClientResponse>('POST', `/api/clients/${id}/resource-permissions/${permissionId}`),
     removeResourcePermission: (id: string, permissionId: string) =>
       apiRequest<ClientResponse>('DELETE', `/api/clients/${id}/resource-permissions/${permissionId}`),
+  },
+  oauth2Consents: {
+    list: (params?: { userId?: string }) =>
+      apiRequest<OAuth2ConsentResponse[]>('GET', '/api/oauth2/consents', undefined, cleanParams(params)),
+    me: () => apiRequest<OAuth2ConsentResponse[]>('GET', '/api/oauth2/consents/me'),
+    revoke: (clientId: string, userId: string) =>
+      apiRequest<void>('DELETE', `/api/oauth2/consents/${encodeURIComponent(clientId)}`, undefined, { userId }),
+    revokeMe: (clientId: string) =>
+      apiRequest<void>('DELETE', `/api/oauth2/consents/me/${encodeURIComponent(clientId)}`),
   },
   mfa: {
     enrollTotp: (userId: string) => apiRequest<MfaEnrollmentResponse>('POST', `/api/users/${userId}/mfa/totp/enrollment`),

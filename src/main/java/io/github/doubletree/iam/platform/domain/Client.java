@@ -322,6 +322,17 @@ public class Client {
                 && (redirectUris == null || redirectUris.isEmpty())) {
             throw new IllegalArgumentException("Authorization code clients must have at least one redirect URI");
         }
+        if (grantTypes != null && grantTypes.contains("refresh_token")) {
+            if (!grantTypes.contains("authorization_code")) {
+                throw new IllegalArgumentException("Refresh token clients must also support authorization_code");
+            }
+            if (grantTypes.contains("client_credentials") && grantTypes.size() == 2) {
+                throw new IllegalArgumentException("Client credentials-only clients must not use refresh tokens");
+            }
+            if (clientType == ClientType.PUBLIC) {
+                throw new IllegalArgumentException("Public clients must not use refresh tokens");
+            }
+        }
         if (clientType == ClientType.PUBLIC) {
             if (hasText(clientSecretHash)) {
                 throw new IllegalArgumentException("Public clients must not have a client secret");

@@ -274,6 +274,14 @@ Completed slices:
   protects salary reads, and `payroll.salary.write` protects salary writes.
   This is an in-server portfolio slice for the OAuth2 resource-server flow, not
   a full external policy engine or production business application.
+- OAuth2 token lifecycle foundation: confidential authorization-code clients can
+  use refresh tokens, public clients are kept off refresh tokens, refresh cannot
+  expand beyond originally authorized/client-allowed scopes, token revocation is
+  wired for supported in-process tokens, and lifecycle audit events avoid token
+  values.
+- OAuth2 consent management foundation: JDBC-backed consent storage, safe
+  current-user/admin consent listing, consent revocation, and Admin Console
+  visibility without exposing tokens or client secrets.
 - Clearer user lifecycle controls for `PENDING`, `ACTIVE`, `DISABLED`, and
   `LOCKED`, plus status-change audit events.
 - TOTP enrollment UX with one-time setup secret display, `otpauth://` URI, and
@@ -283,7 +291,7 @@ Completed slices:
 Candidate slices:
 
 - Production session hardening.
-- Refresh tokens and token lifecycle.
+- Durable distributed authorization/token storage and token lifecycle hardening.
 - MFA UX with QR code.
 - Separate external resource service demo.
 - OIDC UserInfo / ID token claims.

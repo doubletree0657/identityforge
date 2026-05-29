@@ -49,7 +49,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     private static final Set<String> DEVELOPMENT_REDIRECT_URIS = Set.of(
             "http://127.0.0.1:8080/oauth2/demo/callback",
             "http://localhost:5173/oauth2/callback");
-    private static final Set<String> DEVELOPMENT_GRANT_TYPES = Set.of("client_credentials", "authorization_code");
+    private static final Set<String> DEVELOPMENT_GRANT_TYPES = Set.of("client_credentials", "authorization_code", "refresh_token");
     private static final Set<String> DEVELOPMENT_SCOPES = Set.of("iam.read", "iam.write");
     private static final Set<String> DEVELOPMENT_AUTHENTICATION_METHODS = Set.of("client_secret_basic");
     private static final Set<String> ADMIN_CONSOLE_REDIRECT_URIS = Set.of("http://localhost:5173/oauth2/callback");

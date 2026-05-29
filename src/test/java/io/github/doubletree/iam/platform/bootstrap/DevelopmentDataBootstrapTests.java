@@ -104,7 +104,7 @@ class DevelopmentDataBootstrapTests {
         assertThat(client.getStatus()).isEqualTo(ClientStatus.ACTIVE);
         assertThat(client.isRequirePkce()).isFalse();
         assertThat(client.isRequireConsent()).isFalse();
-        assertThat(client.getGrantTypes()).containsExactlyInAnyOrder("client_credentials", "authorization_code");
+        assertThat(client.getGrantTypes()).containsExactlyInAnyOrder("client_credentials", "authorization_code", "refresh_token");
         assertThat(client.getScopes()).containsExactlyInAnyOrder("iam.read", "iam.write");
         assertThat(client.getAuthenticationMethods()).containsExactly("client_secret_basic");
         assertThat(client.getResourceServer().getIdentifier())
@@ -126,6 +126,7 @@ class DevelopmentDataBootstrapTests {
         assertThat(adminConsoleClient.isRequirePkce()).isTrue();
         assertThat(adminConsoleClient.isRequireConsent()).isFalse();
         assertThat(adminConsoleClient.getGrantTypes()).containsExactly("authorization_code");
+        assertThat(adminConsoleClient.getGrantTypes()).doesNotContain("refresh_token");
         assertThat(adminConsoleClient.getScopes()).containsExactlyInAnyOrder("iam.read", "iam.write", "openid", "profile");
         assertThat(adminConsoleClient.getAuthenticationMethods()).containsExactly("none");
         assertThat(adminConsoleClient.getRedirectUris()).containsExactly("http://localhost:5173/oauth2/callback");

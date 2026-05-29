@@ -6,6 +6,7 @@ import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import io.github.doubletree.iam.platform.application.service.AuditApplicationService;
+import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.security.AdminApiAuthorizationManager;
 import io.github.doubletree.iam.platform.security.authentication.MfaAuthenticationSuccessHandler;
 import io.github.doubletree.iam.platform.security.authentication.PlatformUserDetails;
@@ -17,8 +18,11 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
 import java.util.UUID;
+import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -28,16 +32,24 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AccessTokenResponse;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
+import org.springframework.security.oauth2.core.http.converter.OAuth2AccessTokenResponseHttpMessageConverter;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationConsentService;
+import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationConsentService;
+import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AccessTokenAuthenticationToken;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationException;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AuthorizationCodeRequestAuthenticationToken;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2ClientAuthenticationToken;
+import org.springframework.security.oauth2.server.authorization.authentication.OAuth2TokenRevocationAuthenticationToken;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
@@ -67,7 +79,8 @@ public class AuthorizationServerConfiguration {
     @Order(Ordered.HIGHEST_PRECEDENCE)
     SecurityFilterChain authorizationServerSecurityFilterChain(
             HttpSecurity http,
-            AuditApplicationService auditApplicationService) throws Exception {
+            AuditApplicationService auditApplicationService,
+            ObjectProvider<ClientRepository> clientRepository) throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 OAuth2AuthorizationServerConfigurer.authorizationServer();
         RequestMatcher authorizationServerEndpointsMatcher = authorizationServerConfigurer.getEndpointsMatcher();
@@ -85,6 +98,16 @@ public class AuthorizationServerConfiguration {
                                 .errorResponseHandler((request, response, exception) -> {
                                     auditConsent(request, null, auditApplicationService, false);
                                     sendErrorResponse(request, response, exception);
+                                }))
+                        .tokenEndpoint(tokenEndpoint -> tokenEndpoint
+                                .accessTokenResponseHandler((request, response, authentication) -> {
+                                    auditTokenRefresh(request, authentication, auditApplicationService, clientRepository);
+                                    sendTokenResponse(response, authentication);
+                                }))
+                        .tokenRevocationEndpoint(tokenRevocationEndpoint -> tokenRevocationEndpoint
+                                .revocationResponseHandler((request, response, authentication) -> {
+                                    auditTokenRevocation(authentication, auditApplicationService, clientRepository);
+                                    response.setStatus(HttpStatus.OK.value());
                                 })))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
@@ -115,6 +138,8 @@ public class AuthorizationServerConfiguration {
                         .requestMatchers("/login", "/login/mfa", "/logout").permitAll()
                         .requestMatchers("/oauth2/consent").authenticated()
                         .requestMatchers("/api/me").hasAuthority("SCOPE_iam.read")
+                        .requestMatchers(HttpMethod.GET, "/api/oauth2/consents/me").hasAuthority("SCOPE_iam.read")
+                        .requestMatchers(HttpMethod.DELETE, "/api/oauth2/consents/me/*").hasAuthority("SCOPE_iam.write")
                         .requestMatchers(HttpMethod.POST, "/api/**").access(new AdminApiAuthorizationManager("iam.write"))
                         .requestMatchers(HttpMethod.PUT, "/api/**").access(new AdminApiAuthorizationManager("iam.write"))
                         .requestMatchers(HttpMethod.PATCH, "/api/**").access(new AdminApiAuthorizationManager("iam.write"))
@@ -154,6 +179,77 @@ public class AuthorizationServerConfiguration {
                 .csrf(csrf -> csrf.ignoringRequestMatchers(apiEndpointsMatcher));
 
         return http.build();
+    }
+
+    private void auditTokenRefresh(
+            HttpServletRequest request,
+            Authentication authentication,
+            AuditApplicationService auditApplicationService,
+            ObjectProvider<ClientRepository> clientRepository) {
+        if (!"refresh_token".equals(request.getParameter(OAuth2ParameterNames.GRANT_TYPE))
+                || !(authentication instanceof OAuth2AccessTokenAuthenticationToken tokenAuthentication)) {
+            return;
+        }
+        auditByRegisteredClientId(
+                tokenAuthentication.getRegisteredClient().getId(),
+                "OAUTH2_TOKEN_REFRESHED",
+                auditApplicationService,
+                clientRepository);
+    }
+
+    private void auditTokenRevocation(
+            Authentication authentication,
+            AuditApplicationService auditApplicationService,
+            ObjectProvider<ClientRepository> clientRepository) {
+        if (!(authentication instanceof OAuth2TokenRevocationAuthenticationToken revocationAuthentication)
+                || !(revocationAuthentication.getPrincipal() instanceof OAuth2ClientAuthenticationToken clientAuthentication)
+                || clientAuthentication.getRegisteredClient() == null) {
+            return;
+        }
+        auditByRegisteredClientId(
+                clientAuthentication.getRegisteredClient().getId(),
+                "OAUTH2_TOKEN_REVOKED",
+                auditApplicationService,
+                clientRepository);
+    }
+
+    private void auditByRegisteredClientId(
+            String registeredClientId,
+            String action,
+            AuditApplicationService auditApplicationService,
+            ObjectProvider<ClientRepository> clientRepository) {
+        ClientRepository repository = clientRepository.getIfAvailable();
+        if (repository == null) {
+            return;
+        }
+        try {
+            repository.findById(UUID.fromString(registeredClientId))
+                    .ifPresent(client -> auditApplicationService.recordEvent(
+                            client.getTenant().getId(), action, "CLIENT", client.getId()));
+        } catch (IllegalArgumentException ignored) {
+            // Registered client ids are internal UUIDs for persisted clients.
+        }
+    }
+
+    private void sendTokenResponse(
+            HttpServletResponse response,
+            Authentication authentication) throws IOException {
+        OAuth2AccessTokenAuthenticationToken accessTokenAuthentication =
+                (OAuth2AccessTokenAuthenticationToken) authentication;
+        var accessToken = accessTokenAuthentication.getAccessToken();
+        OAuth2AccessTokenResponse.Builder builder = OAuth2AccessTokenResponse
+                .withToken(accessToken.getTokenValue())
+                .tokenType(accessToken.getTokenType())
+                .scopes(accessToken.getScopes());
+        if (accessToken.getIssuedAt() != null && accessToken.getExpiresAt() != null) {
+            builder.expiresIn(Duration.between(accessToken.getIssuedAt(), accessToken.getExpiresAt()).getSeconds());
+        }
+        if (accessTokenAuthentication.getRefreshToken() != null) {
+            builder.refreshToken(accessTokenAuthentication.getRefreshToken().getTokenValue());
+        }
+        builder.additionalParameters(accessTokenAuthentication.getAdditionalParameters());
+        new OAuth2AccessTokenResponseHttpMessageConverter()
+                .write(builder.build(), MediaType.APPLICATION_JSON, new ServletServerHttpResponse(response));
     }
 
     private LogoutSuccessHandler logoutSuccessHandler(
@@ -272,8 +368,13 @@ public class AuthorizationServerConfiguration {
     }
 
     @Bean
-    OAuth2AuthorizationConsentService authorizationConsentService() {
-        return new InMemoryOAuth2AuthorizationConsentService();
+    OAuth2AuthorizationConsentService authorizationConsentService(
+            ObjectProvider<JdbcOperations> jdbcOperations,
+            RegisteredClientRepository registeredClientRepository) {
+        JdbcOperations operations = jdbcOperations.getIfAvailable();
+        return operations == null
+                ? new InMemoryOAuth2AuthorizationConsentService()
+                : new JdbcOAuth2AuthorizationConsentService(operations, registeredClientRepository);
     }
 
     @Bean
