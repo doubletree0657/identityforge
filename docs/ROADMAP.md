@@ -53,8 +53,8 @@ The codebase currently includes:
   productized resource management screens, global tenant context with
   auto-selection for single-tenant local development, relationship-aware
   user-role, group-member, role-permission, application permission, OAuth2
-  client, MFA, audit log workflows, an IAM workflow demo page, and an OAuth2
-  authorization-code demo helper.
+  client, MFA, audit log workflows, an IAM workflow demo page, and a completed
+  OAuth2 application-scope demo helper for the Payroll API resource flow.
 
 The browser login and consent experience is now demonstrable for local IAM
 flows. It is still not a full production session product and should be hardened
@@ -282,6 +282,12 @@ Completed slices:
 
 Candidate slices:
 
+- Production session hardening.
+- Refresh tokens and token lifecycle.
+- MFA UX with QR code.
+- Separate external resource service demo.
+- OIDC UserInfo / ID token claims.
+- SCIM provisioning polish.
 - Production authentication and session model.
 - Machine-admin authorization for service clients that need non-SCIM Admin API
   access.

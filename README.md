@@ -144,6 +144,43 @@ data for browser-based Admin Console login:
 5. Sign in with username `admin` and password `admin123456`.
 6. Use the Admin Console.
 
+### End-to-End Payroll OAuth2 Demo
+
+The dev profile also seeds a complete local application-scope demo: the
+`Development Tenant`, the `International IAM Dev Client`, the `Payroll API`
+application, and the allowed scopes `payroll.employee.read`,
+`payroll.salary.read`, and `payroll.salary.write`.
+
+1. Start Docker dependencies with `docker compose up -d`.
+2. Start the backend with `./mvnw spring-boot:run -Dspring-boot.run.profiles=dev`.
+3. Start the frontend with `cd frontend && npm run dev`.
+4. Log in at `http://localhost:5173` as `admin` / `admin123456`.
+5. Open `Applications` and verify `Payroll API` is present with its payroll
+   permissions.
+6. Open `OAuth2 Clients` and verify `International IAM Dev Client` is linked to
+   `Payroll API` with allowed payroll scopes.
+7. Open `OAuth2 Demo`, select `International IAM Dev Client`, select
+   `payroll.employee.read`, and generate the authorization URL.
+8. Open the authorization URL, log in, copy the returned `code`, and exchange
+   it with the generated token command. Use the dev client secret `secret`.
+9. Call the employees endpoint with the returned token:
+
+```bash
+curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  http://localhost:8080/demo-resource-api/payroll/employees
+```
+
+Expected result: HTTP 200 with static employee records.
+
+10. Call a salary endpoint with that same employee-read token:
+
+```bash
+curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  http://localhost:8080/demo-resource-api/payroll/salaries
+```
+
+Expected result: HTTP 403 because `payroll.salary.read` was not granted.
+
 The default admin credentials are dev-only and are configured only in
 `application-dev.yml`. Production must not use fixed bootstrap credentials. The
 React Admin Console uses OAuth2 Authorization Code + PKCE with the persisted

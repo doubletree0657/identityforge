@@ -217,6 +217,11 @@ class OAuth2AuthorizationCodeLoginFlowTests {
 
         Jwt jwt = jwtDecoder.decode(accessToken);
         assertThat(jwt.getClaimAsStringList("scope")).containsExactly("payroll.employee.read");
+
+        mockMvc.perform(get("/demo-resource-api/payroll/employees")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].employeeId").value("E-1001"));
     }
 
     @Test
@@ -245,6 +250,79 @@ class OAuth2AuthorizationCodeLoginFlowTests {
         var queryParams = UriComponentsBuilder.fromUriString(redirectUrl).build().getQueryParams();
         assertThat(queryParams.getFirst("error")).isEqualTo("invalid_scope");
         assertThat(queryParams.getFirst("code")).isNull();
+    }
+
+    @Test
+    void authorizationCodeFlowIssuesPayrollScopesThatProtectDemoResourceApi() throws Exception {
+        FlowFixture fixture = createFlowFixture();
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                fixture.client().client().getTenant().getId(), "oauth-payroll-api-full", "OAuth Payroll API Full", null);
+        ResourcePermission employeeRead = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "payroll.employee.read", "Read employees", null);
+        ResourcePermission salaryRead = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "payroll.salary.read", "Read salaries", null);
+        ResourcePermission salaryWrite = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "payroll.salary.write", "Write salaries", null);
+        clientApplicationService.updateClient(
+                fixture.client().client().getId(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                resourceServer.getId());
+        clientApplicationService.assignResourcePermissionToClient(fixture.client().client().getId(), employeeRead.getId());
+        clientApplicationService.assignResourcePermissionToClient(fixture.client().client().getId(), salaryRead.getId());
+        clientApplicationService.assignResourcePermissionToClient(fixture.client().client().getId(), salaryWrite.getId());
+
+        StartedAuthorization startedAuthorization = startAuthorizationRequestExpectingLogin(
+                fixture.client().client().getClientId(), "payroll.employee.read", "payroll-resource-state");
+        AuthenticatedSession authenticatedSession =
+                login(startedAuthorization.session(), fixture.user().getUsername());
+        String employeeReadToken = authorizeAndExchange(
+                authenticatedSession.session(),
+                authenticatedSession.authorizationRedirect(),
+                fixture.client(),
+                "payroll-resource-state");
+        assertThat(jwtDecoder.decode(employeeReadToken).getClaimAsStringList("scope"))
+                .containsExactly("payroll.employee.read");
+        mockMvc.perform(get("/demo-resource-api/payroll/employees")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + employeeReadToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].salaryAmount").doesNotExist());
+        mockMvc.perform(get("/demo-resource-api/payroll/salaries")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + employeeReadToken))
+                .andExpect(status().isForbidden());
+
+        String salaryReadToken = authorizeAuthenticatedSessionAndExchange(
+                authenticatedSession.session(),
+                fixture.client(),
+                "payroll.salary.read",
+                "payroll-salary-read-state");
+        mockMvc.perform(get("/demo-resource-api/payroll/salaries")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + salaryReadToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].salaryAmount").value(132000.00));
+        mockMvc.perform(post("/demo-resource-api/payroll/salaries")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + salaryReadToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+
+        String salaryWriteToken = authorizeAuthenticatedSessionAndExchange(
+                authenticatedSession.session(),
+                fixture.client(),
+                "payroll.salary.write",
+                "payroll-salary-write-state");
+        mockMvc.perform(post("/demo-resource-api/payroll/salaries")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + salaryWriteToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("accepted"));
     }
 
     private FlowFixture createFlowFixture() {
@@ -323,12 +401,31 @@ class OAuth2AuthorizationCodeLoginFlowTests {
         return extractCode(authorize(session, loginSuccessRedirect), expectedState);
     }
 
+    private String authorizeAndExchange(
+            MockHttpSession session,
+            String authorizationUrl,
+            ClientSecretResult client,
+            String expectedState) throws Exception {
+        String code = extractCode(authorize(session, authorizationUrl), expectedState);
+        return exchangeCodeForAccessToken(client.client().getClientId(), client.clientSecret(), code);
+    }
+
     private String authorizeAuthenticatedSessionAndExtractCode(
             MockHttpSession session,
             String clientId,
             String scope,
             String expectedState) throws Exception {
         return extractCode(authorize(session, authorizationRequest(clientId, scope, expectedState)), expectedState);
+    }
+
+    private String authorizeAuthenticatedSessionAndExchange(
+            MockHttpSession session,
+            ClientSecretResult client,
+            String scope,
+            String expectedState) throws Exception {
+        String code = authorizeAuthenticatedSessionAndExtractCode(
+                session, client.client().getClientId(), scope, expectedState);
+        return exchangeCodeForAccessToken(client.client().getClientId(), client.clientSecret(), code);
     }
 
     private String authorize(MockHttpSession session, String authorizationUrl) throws Exception {
