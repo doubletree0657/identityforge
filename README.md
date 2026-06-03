@@ -1,128 +1,203 @@
-# international-iam-platform
+# International IAM Platform
 
-`international-iam-platform` is an identity and access management platform
-project built with Java 21, Spring Boot, Spring Security, Spring Authorization
-Server, PostgreSQL, Docker, CI/CD practice, and a React TypeScript Admin
-Console.
+International IAM Platform is a **portfolio-grade IAM and OAuth2 Authorization
+Server prototype**. It demonstrates tenant-aware identity administration,
+role-based access control (RBAC), OAuth2 Authorization Code + PKCE, application
+scopes, consent management, token lifecycle foundations, audit logging, and
+scope-protected resource API access.
 
-The project exists as a portfolio-grade engineering workspace for modern Java
-backend development, identity security, OAuth2, MFA, SCIM-style provisioning,
-containerized local development, continuous delivery practice, and technical
-interview preparation for international backend roles.
+This is a public portfolio project created to demonstrate modern Java backend
+engineering, identity security, system design, React integration, Docker,
+CI/CD, testing, and English technical documentation. It is an independent
+project and is not copied from, or presented as, any company product.
 
-It is under active development and is not production-ready. The current code is
-useful for demonstrating implementation direction, design judgment, testing
-practice, full-stack integration, and incremental delivery, but it should not
-be treated as a complete IAM product or deployed for real users.
+The repository is intended for engineers, reviewers, and interviewers who want
+to inspect a practical IAM/OAuth2 implementation and run a complete local demo.
+It is **not production-ready**, is not intended to replace a production IAM
+platform, and requires production hardening before use with real users or
+business data.
 
-## Technical Focus
+## Why This Project Exists
 
-The project targets these areas:
+IAM systems connect authentication, authorization, identity data, security
+boundaries, API design, and operational concerns. This project provides a
+concrete workspace for demonstrating those concerns as integrated product
+slices rather than isolated framework examples.
 
-- Java 21 and Spring Boot backend architecture.
-- Identity domain modeling for tenants, users, clients, roles, permissions,
-  groups, and audit events.
-- OAuth2 and authorization server behavior with Spring Authorization Server.
-- Spring Security integration, JWTs, JWKs, and scope-based API protection.
-- MFA workflows and secure handling of authentication secrets.
-- SCIM-style user and group provisioning APIs.
-- PostgreSQL persistence with Flyway migrations and JPA.
-- Docker-based local services and CI/CD workflows.
-- React TypeScript Admin Console integration against real Admin APIs.
-- Testcontainers-backed integration testing.
-- Clear documentation for code review and interview discussion.
+The main local demo proves a complete application-scope flow:
 
-## Current State
+1. A tenant owns a Payroll API application.
+2. The application defines permissions such as `payroll.employee.read`.
+3. An OAuth2 client is allowed to request selected application permissions as
+   scopes.
+4. Spring Authorization Server issues an access token after user authorization.
+5. A demo resource API allows or rejects requests based on the issued scopes.
 
-The codebase currently includes a Spring Boot backend with Flyway-managed
-PostgreSQL schema migrations, a stronger IAM domain model, JPA repositories,
-service-layer orchestration, REST controllers, DTO validation, centralized error
-handling, OpenAPI output, JWT/JWK support, scope-protected APIs, audit logging,
-TOTP enrollment and verification, encrypted MFA secret storage, SCIM-style user
-and group APIs, OAuth2 client management APIs with secret rotation, repository-
-backed Spring Authorization Server client lookup, an end-to-end tested OAuth2
-authorization-code login flow, backend-owned login, TOTP challenge, and OAuth2
-consent pages, a Dockerfile, local PostgreSQL/Redis Compose services, a React
-TypeScript Admin Console under `frontend/`, and a GitLab CI pipeline.
+## Feature Overview
 
-The Admin API surface is completed and hardened for frontend consumption.
-Current management APIs cover tenants, users, profiles, custom user attributes,
-groups, roles, system IAM permissions, tenant-owned applications/resource
-servers, application permissions, OAuth2 clients, MFA enrollment operations,
-and audit log queries with paginated list responses, practical validation, safer default
-profile handling, consistent validation errors, and safe response DTOs that
-avoid exposing password hashes, TOTP secret material, and client secret hashes.
-The Admin Console demonstrates those APIs through real backend calls and a
-development bearer-token panel. It now has a global tenant selector that is
-used by tenant-scoped screens for users, groups, roles, applications, OAuth2
-clients, MFA operations, and audit logs, while system IAM permissions remain a
-global catalog.
+### Identity Administration
 
-The project has performed a pre-release Flyway schema reset toward a stronger
-identity model. The current baseline includes tenant status, richer user
-identity fields, separate user profiles, separate password and TOTP
-credentials, custom attributes, explicit group memberships, tenant-scoped
-RBAC, OAuth2 client registration concepts, and security event metadata.
+- Tenant-aware users, profiles, custom attributes, password credentials, and
+  account status.
+- Group membership and user lifecycle administration.
+- SCIM-style user and group provisioning foundation.
 
-Browser authentication is backend-owned rather than part of the React Admin
-Console. The project provides `/login`, `/login/mfa`, and `/oauth2/consent`
-pages for local user login, account status enforcement, optional TOTP challenge
-for verified credentials, and consent for OAuth2 clients that require it. These
-pages support the authorization-code journey; management and SCIM APIs remain
-protected by OAuth2 JWT scope checks.
+### Tenant and Admin Authorization
 
-## Tech Stack
+- Tenant-scoped administration with `platform-admin`, `tenant-admin`, and
+  `auditor` role templates.
+- Backend-enforced Admin RBAC for `/api/**`.
+- Fine-grained Admin API permission checks in addition to OAuth2 scope checks.
 
-- Java 21
-- Spring Boot 3.5
-- Spring Security and Spring Authorization Server
-- Spring Data JPA
-- PostgreSQL
-- Redis
-- Flyway
-- Testcontainers
-- Maven Wrapper
-- Docker Compose
-- OpenAPI / Swagger UI
-- GitLab CI/CD
+### RBAC and Effective Permissions
 
-## Running Tests
+- Tenant-scoped roles backed by a global system IAM permission catalog.
+- Direct user roles and group-derived roles.
+- De-duplicated effective roles and effective permissions exposed to the
+  authenticated user and Admin Console.
 
-Tests use Maven and Testcontainers. Docker or a compatible container runtime
-must be available.
+### OAuth2 / Authorization Server
 
-```bash
-./mvnw test
+- Spring Authorization Server integration with persisted OAuth2 clients.
+- OAuth2 Authorization Code flow, including PKCE for the public Admin Console
+  client.
+- Backend-owned login, optional TOTP challenge, and consent pages.
+- JWT access tokens, JWK support, and scope validation.
+
+### Applications and Resource Servers
+
+- Tenant-owned Applications / Resource Servers.
+- Application permissions modeled separately from system IAM permissions.
+- OAuth2 clients linked to applications with selected application permissions
+  allowed as requestable scopes.
+
+### Demo Resource API
+
+- Static Payroll API endpoints under `/demo-resource-api/payroll/**`.
+- Scope enforcement for `payroll.employee.read`, `payroll.salary.read`, and
+  `payroll.salary.write`.
+- A complete local demonstration of allowed and denied resource access.
+
+### Token Lifecycle and Consents
+
+- Refresh token foundation for supported confidential authorization-code
+  clients.
+- OAuth2 token revocation endpoint at `/oauth2/revoke`.
+- Safe consent listing and revocation for current users and administrators.
+- JDBC-backed consent storage.
+
+### Security and Audit
+
+- TOTP MFA enrollment and verification foundation with encrypted secret
+  storage.
+- Audit events for identity administration, authentication, consent, token
+  lifecycle, and other security-sensitive actions.
+- Safe DTOs and one-time secret display rules that avoid exposing password
+  hashes, TOTP ciphertext, client secret hashes, authorization codes, or tokens.
+
+### Admin Console
+
+- React TypeScript Admin Console using real backend Admin APIs.
+- OAuth2 Authorization Code + PKCE login.
+- Pages for tenants, users, groups, roles, permissions, applications, OAuth2
+  clients, consents, MFA actions, audit logs, and guided demo workflows.
+
+### Engineering Practices
+
+- Java 21, Spring Boot 3.5.x, PostgreSQL, Redis, Flyway, and Docker Compose.
+- Clean pre-release Flyway V1 schema.
+- Testcontainers-backed integration tests.
+- Maven Wrapper, frontend build verification, Docker image build, and GitLab
+  CI/CD pipeline.
+- OpenAPI documentation and centralized API validation/error handling.
+
+## Architecture Overview
+
+```mermaid
+flowchart LR
+    Browser[Browser]
+    Console[React Admin Console]
+    Backend[IAM Backend<br/>Spring Boot]
+    Auth[OAuth2 Authorization Server]
+    Admin[Admin APIs]
+    Model[Application / Resource Server Model]
+    Payroll[Demo Payroll Resource API]
+    DB[(PostgreSQL)]
+    Redis[(Redis)]
+
+    Browser --> Console
+    Console -->|Authorization Code + PKCE and Admin API calls| Backend
+    Backend --> Auth
+    Backend --> Admin
+    Backend --> Model
+    Backend --> Payroll
+    Backend --> DB
+    Backend --> Redis
+    Auth -->|JWT access token with application scopes| Console
+    Console -->|Scoped API call| Payroll
 ```
 
-## Local Development
+```mermaid
+flowchart TB
+    Tenant[Tenant] --> User[User]
+    User --> Membership[Group Membership]
+    Membership --> Group[Group]
+    User --> DirectRole[Direct Role Assignment]
+    Group --> GroupRole[Group Role Assignment]
+    DirectRole --> Role[Role]
+    GroupRole --> Role
+    Role --> SystemPermission[System IAM Permission]
 
-Required tools:
+    Tenant --> Application[Application / Resource Server]
+    Application --> AppPermission[Application Permission]
+    Tenant --> Client[OAuth2 Client]
+    Client --> Application
+    Client --> AllowedScope[Allowed Application Scope]
+    AppPermission --> AllowedScope
+    AllowedScope --> Token[Access Token Scope]
+    Token --> DemoApi[Demo Payroll Resource API]
+```
+
+System IAM permissions protect this platform's Admin APIs. Application
+permissions describe capabilities exposed by tenant-owned applications and can
+be issued as OAuth2 scopes. They are intentionally separate authorization
+models.
+
+## Quick Start
+
+### Prerequisites
 
 - JDK 21
-- Docker or a Docker-compatible runtime
+- Docker or a Docker-compatible container runtime
+- Node.js 20+ and npm
 - Git
-- Node.js 20+ and npm for the Admin Console
 
-Start local dependencies:
+### Start Local Dependencies
+
+From the repository root:
 
 ```bash
 docker compose up -d
 ```
 
-Run the application:
+This starts PostgreSQL on `localhost:5432` and Redis on `localhost:6379`.
+Compose credentials are local development values only.
+
+### Start the Backend
 
 ```bash
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-Health check:
+The backend starts at `http://localhost:8080`.
 
 ```bash
 curl http://localhost:8080/api/health
 ```
 
-Run the Admin Console:
+### Start the Admin Console
+
+In a second terminal:
 
 ```bash
 cd frontend
@@ -130,102 +205,172 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. The frontend defaults to
-`http://localhost:8080` for backend calls. Override it with
-`VITE_API_BASE_URL` for local development.
+Open `http://localhost:5173`, select **Sign in with International IAM**, and
+log in with:
 
-With the `dev` Spring profile active, the backend creates local-only bootstrap
-data for browser-based Admin Console login:
-
-1. Start the backend with the dev profile.
-2. Start the frontend.
-3. Open `http://localhost:5173`.
-4. Click `Sign in with International IAM`.
-5. Sign in with username `admin` and password `admin123456`.
-6. Use the Admin Console.
-
-### End-to-End Payroll OAuth2 Demo
-
-The dev profile also seeds a complete local application-scope demo: the
-`Development Tenant`, the `International IAM Dev Client`, the `Payroll API`
-application, and the allowed scopes `payroll.employee.read`,
-`payroll.salary.read`, and `payroll.salary.write`.
-
-1. Start Docker dependencies with `docker compose up -d`.
-2. Start the backend with `./mvnw spring-boot:run -Dspring-boot.run.profiles=dev`.
-3. Start the frontend with `cd frontend && npm run dev`.
-4. Log in at `http://localhost:5173` as `admin` / `admin123456`.
-5. Open `Applications` and verify `Payroll API` is present with its payroll
-   permissions.
-6. Open `OAuth2 Clients` and verify `International IAM Dev Client` is linked to
-   `Payroll API` with allowed payroll scopes.
-7. Open `OAuth2 Demo`, select `International IAM Dev Client`, select
-   `payroll.employee.read`, and generate the authorization URL.
-8. Open the authorization URL, log in, copy the returned `code`, and exchange
-   it with the generated token command. Use the dev client secret `secret`.
-9. Call the employees endpoint with the returned token:
-
-```bash
-curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
-  http://localhost:8080/demo-resource-api/payroll/employees
+```text
+username: admin
+password: admin123456
 ```
 
-Expected result: HTTP 200 with static employee records.
+These credentials are created only by the `dev` profile and must never be used
+in a production environment.
 
-10. Call a salary endpoint with that same employee-read token:
+The frontend defaults to `http://localhost:8080` for backend calls. Set
+`VITE_API_BASE_URL` when a different local backend URL is required.
+
+## Dev Bootstrap Data
+
+The `dev` profile creates local-only data for the main portfolio demo:
+
+| Type | Value |
+| --- | --- |
+| Tenant | `Development Tenant` |
+| Admin user | `admin` / `admin123456` |
+| Public Admin Console client | `iam-admin-console` |
+| Demo OAuth2 client | `International IAM Dev Client` |
+| Demo OAuth2 client ID / secret | `international-iam-dev` / `secret` |
+| Application / Resource Server | `Payroll API` |
+| Application permissions | `payroll.employee.read`, `payroll.salary.read`, `payroll.salary.write` |
+
+## End-to-End OAuth2 Application Scope Demo
+
+This walkthrough demonstrates that an access token containing
+`payroll.employee.read` can read employee data but cannot read salary data.
+
+1. Start Docker dependencies:
+
+   ```bash
+   docker compose up -d
+   ```
+
+2. Start the backend with the dev profile:
+
+   ```bash
+   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+   ```
+
+3. Start the frontend in a second terminal:
+
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+4. Open `http://localhost:5173` and log in as `admin` / `admin123456`.
+5. Open **Applications** and verify that **Payroll API** exists.
+6. Open **OAuth2 Clients** and verify that **International IAM Dev Client** is
+   linked to **Payroll API**.
+7. Open **OAuth2 Demo**.
+8. Select **International IAM Dev Client**.
+9. Select only `payroll.employee.read`.
+10. Generate the authorization URL.
+11. Open the authorization URL.
+12. Log in and approve consent if required.
+13. Copy the returned authorization code.
+14. Exchange the code for an access token using the generated token command.
+15. Call the employee endpoint:
+
+    ```bash
+    curl -i \
+      -H "Authorization: Bearer <ACCESS_TOKEN>" \
+      http://localhost:8080/demo-resource-api/payroll/employees
+    ```
+
+    Expected result: HTTP `200`.
+
+16. Call the salary endpoint with the same token:
+
+    ```bash
+    curl -i \
+      -H "Authorization: Bearer <ACCESS_TOKEN>" \
+      http://localhost:8080/demo-resource-api/payroll/salaries
+    ```
+
+    Expected result: HTTP `403` because `payroll.salary.read` was not
+    requested.
+
+The Payroll API is intentionally an in-server static demo resource. A
+production architecture would normally protect separate resource services.
+
+## Admin Console Workflows
+
+The Admin Console supports the core IAM relationships without requiring normal
+UUID copy/paste:
+
+- Select a tenant once and use it across tenant-scoped screens.
+- Create and manage users, profiles, attributes, groups, roles, applications,
+  and OAuth2 clients.
+- Assign roles directly to users or indirectly through groups.
+- Attach global system IAM permissions to tenant roles.
+- Review direct, group-derived, and effective roles and permissions.
+- Define application permissions and allow selected permissions as OAuth2
+  client scopes.
+- Manage TOTP actions, OAuth2 consents, and audit log review.
+- Use **IAM Workflow** and **OAuth2 Demo** as guided portfolio demonstrations.
+
+## What This Project Demonstrates
+
+For code review and interview discussion, the repository demonstrates:
+
+- Spring Authorization Server integration with persisted client registration.
+- OAuth2 Authorization Code + PKCE for a public React client.
+- Token scopes generated from tenant-owned application permissions.
+- Scope-protected resource API behavior, including expected `200` and `403`
+  outcomes.
+- Tenant-aware RBAC and effective authorization from direct and group-derived
+  roles.
+- Fine-grained backend authorization for Admin API operations.
+- Safe DTO boundaries, client secret handling, and avoidance of credential
+  material in normal API responses.
+- Audit trail design for identity, authentication, consent, and token events.
+- Testcontainers integration tests, Docker-based local development, and CI/CD
+  practice.
+
+## Security Notes
+
+- `/api/health` is public.
+- Admin APIs under `/api/**` require OAuth2 JWT scopes and backend Admin RBAC.
+  Scopes are necessary but not sufficient for administrative access.
+- SCIM-style APIs under `/scim/v2/**` are scope-protected.
+- The React Admin Console uses the persisted public `iam-admin-console` client
+  with Authorization Code + PKCE.
+- Browser login, MFA challenge, and consent are backend-owned at `/login`,
+  `/login/mfa`, and `/oauth2/consent`.
+- Confidential client secrets are shown only on creation or rotation.
+- TOTP setup secrets and `otpauth://` URIs are shown only during enrollment.
+- The default admin credentials, demo client secret, signing configuration,
+  Compose credentials, and browser token storage model are for local
+  development only.
+
+After startup:
+
+- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+
+## Current Limitations
+
+This project is a portfolio-grade prototype, not a production-ready IAM
+platform.
+
+- Authorization and token storage is not fully distributed production storage.
+- The Demo Payroll API is an in-server static resource API, not a real external
+  service or real payroll system.
+- MFA UX needs QR code and recovery code polish.
+- OIDC UserInfo and ID token claims need productization.
+- SCIM provisioning needs broader protocol and workflow polish.
+- The frontend is functional but is not a fully polished enterprise console.
+- Production secrets, signing keys, session management, rate limiting,
+  observability, high availability, and operational hardening remain future
+  work.
+
+## Development Commands
+
+Run backend tests. Docker is required for Testcontainers:
 
 ```bash
-curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
-  http://localhost:8080/demo-resource-api/payroll/salaries
+./mvnw test
 ```
-
-Expected result: HTTP 403 because `payroll.salary.read` was not granted.
-
-The default admin credentials are dev-only and are configured only in
-`application-dev.yml`. Production must not use fixed bootstrap credentials. The
-React Admin Console uses OAuth2 Authorization Code + PKCE with the persisted
-public client `iam-admin-console`; browser authentication stays on the backend
-owned `/login`, `/login/mfa`, and `/oauth2/consent` pages. The frontend stores
-the local development access token and expiry in browser storage and attaches
-the bearer token automatically to Admin API calls. The local Admin Console
-logout clears frontend token state, calls backend `GET /logout` to invalidate
-the browser session, and returns to `http://localhost:5173/login?loggedOut=true`.
-Production deployments should prefer a CSRF-protected POST logout and a hardened
-browser session model.
-
-The Admin Console is organized around relationship-aware IAM workflows:
-
-- Select a current tenant once in the console header; if only one tenant exists,
-  the console selects it automatically.
-- Create users, groups, roles, and OAuth2 clients in the selected tenant
-  without copying tenant UUIDs.
-- A user belongs to one tenant, does not have to belong to a group, and can
-  belong to many groups. Groups are optional organizational containers.
-- Assign roles directly to users, assign roles to groups, and attach global
-  system IAM permissions to tenant roles from the permission catalog.
-- Manage tenant-owned applications/resource servers and their application
-  permissions. These application permissions are separate from the system IAM
-  permissions that protect this platform's Admin APIs.
-- Link OAuth2 clients to tenant applications and allow selected application
-  permissions as client-requestable OAuth2 application scopes.
-- Use the OAuth2 demo page to request allowed application scopes and call the
-  protected demo Payroll resource API:
-  `GET /demo-resource-api/payroll/employees` requires
-  `payroll.employee.read`, `GET /demo-resource-api/payroll/salaries` requires
-  `payroll.salary.read`, and `POST /demo-resource-api/payroll/salaries`
-  requires `payroll.salary.write`.
-- Review direct roles, group-derived roles, effective roles, and effective
-  permissions on the user detail page.
-- Add and remove group members from the group detail page using tenant user
-  selectors.
-- Manage user identity, profile, custom attributes, password, TOTP actions, and
-  related audit events from the user detail page.
-- Use OAuth2 client templates for public PKCE SPAs, confidential backend
-  service clients, and confidential web apps. Client secrets are shown only once
-  on create or rotation; `clientSecretHash` is never exposed.
-- Filter audit logs by tenant, action, resource type, resource id, and result.
-- Open the `IAM Workflow` page for a guided demo chain from tenant selection
-  through audit log review.
 
 Build the frontend:
 
@@ -240,206 +385,27 @@ Stop local dependencies:
 docker compose down
 ```
 
-Reset local database volumes after the pre-release schema reset:
+Reset local database volumes when a clean development environment is required:
 
 ```bash
 ./scripts/reset-local-db.sh
 ```
 
-Local services:
-
-- PostgreSQL: `localhost:5432`
-- Redis: `localhost:6379`
-
-The Docker Compose credentials are local development values only.
-
-## Demo Resource API
-
-The project includes a small static Payroll API under `/demo-resource-api/**`
-to demonstrate the complete OAuth2 application-permission loop. A tenant-owned
-application can define permissions, an OAuth2 client can be allowed to request
-those permissions as scopes, Spring Authorization Server can issue those
-scopes, and the demo resource endpoints enforce the resulting
-`SCOPE_payroll.*` authorities.
-
-This demo API intentionally does not store real payroll data and is not a full
-external policy engine. Production deployments would usually protect separate
-resource services with their own resource-server configuration instead of
-serving static demo business endpoints from the IAM server.
-
-## Token Lifecycle and Consents
-
-Confidential authorization-code clients can include the `refresh_token` grant.
-The dev `International IAM Dev Client` is configured this way for local demos,
-while the public `iam-admin-console` PKCE client intentionally does not receive
-refresh tokens. Public clients are rejected if configured with `refresh_token`,
-and client-credentials-only clients cannot use refresh tokens.
-
-Refresh-token requests can mint new access tokens for scopes that remain within
-the original authorization and the client's configured/allowed scopes.
-Application permission scopes still come only from the linked resource server
-permissions explicitly allowed on the OAuth2 client; refresh does not make
-arbitrary scopes valid.
-
-The standard OAuth2 revocation endpoint is available at `/oauth2/revoke`.
-Clients can revoke supported tokens, including refresh tokens, and a revoked
-refresh token cannot be used again in the running authorization server process.
-Unknown or unsupported token revocation follows OAuth2 behavior and returns a
-successful response without exposing token details.
-
-Stored OAuth2 consent grants can be viewed and revoked safely:
-
-- `GET /api/oauth2/consents?userId=<user-id>`
-- `GET /api/oauth2/consents/me`
-- `DELETE /api/oauth2/consents/{clientId}?userId=<user-id>`
-- `DELETE /api/oauth2/consents/me/{clientId}`
-
-Consent responses include client identity, user identity, scopes, and the linked
-application name when available. They never include access tokens, refresh
-tokens, authorization codes, raw client secrets, or client secret hashes. Consent
-storage is JDBC-backed; authorization/token storage remains in-process in this
-foundation slice, so distributed production token/session hardening remains
-future work. Audit logs record token refresh, token revocation, and consent
-revocation events without token or secret values.
-
-## API Documentation
-
-After the application starts:
-
-- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
-- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
-
-The health endpoint is public. `/api/me` returns safe current-principal
-information for authenticated users with `iam.read`; it does not expose
-password hashes, client secret hashes, token material, or TOTP ciphertext.
-Management APIs under `/api/**` require both OAuth2 JWT scopes and Admin RBAC:
-
-- Read operations require `iam.read`.
-- Write operations require `iam.write`.
-- Scopes are necessary but not sufficient; the token must also contain a
-  recognized IAM Admin role or built-in system permission for the requested
-  resource and operation.
-- `platform-admin` can manage all tenants, and `iam.admin` implies every Admin
-  API permission.
-- `tenant-admin` can manage resources only in its own tenant and still needs
-  the concrete permission, such as `iam.users.read` or `iam.users.write`.
-- `auditor` is read-only because its template receives read permissions only.
-- Normal users are rejected from Admin APIs even if a token contains
-  `iam.read` or `iam.write`.
-
-Local user access tokens include stable authorization claims: `user_id`,
-`tenant_id`, `display_name`, `direct_roles`, `group_roles`, `effective_roles`,
-`direct_permissions`, `group_permissions`, and `effective_permissions`.
-`roles` and `permissions` remain compatibility aliases for effective roles and
-effective permissions. Service-client SCIM access remains scope-based under
-`/scim/v2/**`; service-client Admin API access should use an explicit future
-machine-admin model rather than React client secrets.
-
-Admin API authorization uses a global system permission catalog seeded by the
-backend, not arbitrary strings typed in the Admin Console. Permissions are
-atomic capabilities. Roles are tenant-scoped bundles of permissions, and
-role-permission assignment references the same global system permission rows
-for every tenant. Built-in IAM permissions include:
-
-- `iam.tenants.read`, `iam.tenants.write`
-- `iam.users.read`, `iam.users.write`
-- `iam.groups.read`, `iam.groups.write`
-- `iam.roles.read`, `iam.roles.write`
-- `iam.permissions.read`, `iam.permissions.write`
-- `iam.resource-servers.read`, `iam.resource-servers.write`
-- `iam.clients.read`, `iam.clients.write`
-- `iam.audit.read`
-- `iam.mfa.manage`
-- `iam.admin`
-
-Each seeded permission records display name, description, category, and
-`systemManaged`, with no tenant owner. New tenants get role templates that
-reference the global catalog immediately: `platform-admin` receives all
-built-in permissions, `tenant-admin` receives tenant-scoped management
-permissions, and `auditor` receives read-only permissions. Reserved `iam.*`
-permissions cannot be created manually through the API.
-
-Tenant-owned applications are modeled separately as resource servers. A
-resource server belongs to a tenant and has its own application permissions,
-such as `payroll.employee.read` or `crm.customer.read`. These application
-permissions describe capabilities exposed by business applications. OAuth2
-clients can optionally link to a resource server and be allowed selected
-application permissions as requestable OAuth2 scopes. Spring Authorization
-Server rejects unassigned application permission scopes for that client, and a
-client without a linked resource server cannot request application permission
-scopes. These are not Admin API permissions and are not enforced as a full
-external resource API policy engine yet. Random database permission strings do
-not grant Admin API access unless they are part of the recognized built-in
-catalog. Client-credentials tokens, including local development service
-clients, do not bypass Admin RBAC; they need an explicit future machine-admin
-model before calling Admin APIs.
-
-Role and permission resolution is additive and de-duplicated:
-
-- Direct permissions come from `User -> Role -> Permission`.
-- Group-derived permissions come from
-  `User -> GroupMembership -> Group -> Role -> Permission`.
-- Group, role, and user assignments are tenant-boundary checked.
-
-User lifecycle status has login impact:
-
-- `PENDING`: created but not fully activated or password not set.
-- `ACTIVE`: can authenticate.
-- `DISABLED`: cannot authenticate.
-- `LOCKED`: cannot authenticate until an administrator unlocks the user.
-
-TOTP enrollment returns the setup secret and `otpauth://` URI only during
-enrollment. The UI tells administrators to add the secret or URI to Google
-Authenticator, Microsoft Authenticator, or 1Password and verify with the
-current six-digit authenticator code.
-
-## OAuth2 Authorization Code Demo
-
-The backend now supports a productized development authorization-code flow using
-persisted OAuth2 clients, local username/password login, optional TOTP challenge,
-and project-owned consent.
-
-At a high level:
-
-1. Create a tenant, local user, and confidential OAuth2 client through the
-   existing service/API paths. The client should use `authorization_code`,
-   `client_secret_basic`, a development redirect URI such as
-   `http://127.0.0.1:8080/oauth2/demo/callback`, and the `iam.read` scope. To
-   try application scopes, link the client to an application and assign one of
-   that application's permissions to the client.
-2. Set the user's initial password through the password management service.
-3. Start a browser authorization request:
-
-```text
-/oauth2/authorize?response_type=code&client_id=<client-id>&redirect_uri=<redirect-uri>&scope=iam.read&state=<state>
-```
-
-4. The browser is redirected to `/login`; disabled and locked users are blocked
-   with generic failure messages.
-5. If the user has an enabled verified TOTP credential, `/login/mfa` must be
-   completed before the authorization request continues.
-6. If the client requires consent, `/oauth2/consent` shows the client name,
-   requested scopes, scope descriptions, and the authenticated user. Assigned
-   application permissions can appear as OAuth2 scopes; unassigned application
-   scopes are rejected as `invalid_scope`.
-7. After approval, the authorization server redirects back to the client
-   redirect URI with a code. Denial returns the OAuth2 `access_denied` response.
-8. Exchange the code at `/oauth2/token` with the confidential client's
-   authentication and use the returned bearer token on `/api/**` requests that
-   require `iam.read`.
-
-The executable integration test
-`OAuth2AuthorizationCodeLoginFlowTests` seeds this setup and proves the full
-flow end to end. Authentication and consent audit events are recorded without
-raw passwords, password hashes, TOTP codes, TOTP secrets, client secrets,
-authorization codes, tokens, or signing keys.
-
-Future authentication work remains intentionally out of scope here: a production
-frontend session model, OIDC UserInfo, recovery codes, passkeys/WebAuthn,
-enterprise risk-based authentication, and full production hardening.
-
 ## Roadmap
 
-Planning is tracked in [docs/ROADMAP.md](docs/ROADMAP.md). The roadmap is the
-single planning document for current direction, future product tracks, and
-documentation policy.
+Planning and production-hardening priorities are tracked in
+[docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Tech Stack
+
+- Java 21
+- Spring Boot 3.5.x
+- Spring Security and Spring Authorization Server
+- Spring Data JPA and Flyway
+- PostgreSQL and Redis
+- React, TypeScript, and Vite
+- Docker Compose
+- Testcontainers
+- OpenAPI / Swagger UI
+- Maven Wrapper
+- GitLab CI/CD
