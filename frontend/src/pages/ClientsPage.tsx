@@ -101,7 +101,7 @@ export function ClientsPage() {
       requirePkce: true,
       requireConsent: true,
       redirectUris: 'http://localhost:8080/oauth2/demo/callback',
-      scopes: 'openid,profile,iam.read',
+      scopes: 'openid,profile,email,iam.read',
     },
   };
   const selectedTemplate = templates[template as keyof typeof templates];

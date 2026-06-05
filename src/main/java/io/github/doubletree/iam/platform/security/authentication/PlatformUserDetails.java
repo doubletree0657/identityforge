@@ -6,19 +6,25 @@ import io.github.doubletree.iam.platform.domain.User;
 import io.github.doubletree.iam.platform.application.result.EffectiveAuthorization;
 import io.github.doubletree.iam.platform.application.service.EffectiveAuthorizationService;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 public record PlatformUserDetails(
         UUID userId,
         UUID tenantId,
+        String tenantName,
         String username,
         String displayName,
+        String email,
+        boolean emailVerified,
         String password,  
         AccountStatus accountStatus,
+        Set<String> groups,
         Set<String> directRoles,
         Set<String> groupRoles,
         Set<String> effectiveRoles,
@@ -36,8 +42,8 @@ public record PlatformUserDetails(
             AccountStatus accountStatus,
             Set<String> roles,
             Set<String> permissions) {
-        this(userId, tenantId, username, displayName, password, accountStatus,
-                roles, Set.of(), roles, permissions, Set.of(), permissions);
+        this(userId, tenantId, null, username, displayName, null, false, password, accountStatus,
+                Set.of(), roles, Set.of(), roles, permissions, Set.of(), permissions);
     }
 
     public static PlatformUserDetails from(User user, EffectiveAuthorizationService authorizationService) {
@@ -46,10 +52,16 @@ public record PlatformUserDetails(
         return new PlatformUserDetails(
                 user.getId(),
                 user.getTenant().getId(),
+                user.getTenant().getName(),
                 user.getUsername(),
                 user.getDisplayName(),
+                user.getEmail(),
+                user.isEmailVerified(),
                 credential == null ? null : credential.getPasswordHash(),
                 user.getAccountStatus(),
+                user.getGroups().stream()
+                        .map(group -> group.getName())
+                        .collect(Collectors.toCollection(LinkedHashSet::new)),
                 authorization.directRoles(),
                 authorization.groupRoles(),
                 authorization.effectiveRoles(),

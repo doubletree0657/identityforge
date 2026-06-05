@@ -105,7 +105,8 @@ class DevelopmentDataBootstrapTests {
         assertThat(client.isRequirePkce()).isFalse();
         assertThat(client.isRequireConsent()).isFalse();
         assertThat(client.getGrantTypes()).containsExactlyInAnyOrder("client_credentials", "authorization_code", "refresh_token");
-        assertThat(client.getScopes()).containsExactlyInAnyOrder("iam.read", "iam.write");
+        assertThat(client.getScopes()).containsExactlyInAnyOrder(
+                "iam.read", "iam.write", "openid", "profile", "email", "groups", "roles");
         assertThat(client.getAuthenticationMethods()).containsExactly("client_secret_basic");
         assertThat(client.getResourceServer().getIdentifier())
                 .isEqualTo(DevelopmentDataBootstrap.PAYROLL_RESOURCE_SERVER_IDENTIFIER);

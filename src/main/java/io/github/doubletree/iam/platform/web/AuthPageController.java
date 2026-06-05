@@ -1,6 +1,8 @@
 package io.github.doubletree.iam.platform.web;
 
 import io.github.doubletree.iam.platform.application.service.MfaApplicationService;
+import io.github.doubletree.iam.platform.domain.ResourcePermission;
+import io.github.doubletree.iam.platform.repository.ClientRepository;
 import io.github.doubletree.iam.platform.security.authentication.MfaAuthenticationSuccessHandler;
 import io.github.doubletree.iam.platform.security.authentication.PlatformUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
@@ -8,7 +10,9 @@ import jakarta.servlet.http.HttpSession;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -32,13 +36,16 @@ public class AuthPageController {
 
     private final MfaApplicationService mfaApplicationService;
     private final RegisteredClientRepository registeredClientRepository;
+    private final ObjectProvider<ClientRepository> clientRepository;
     private final HttpSessionSecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
 
     public AuthPageController(
             MfaApplicationService mfaApplicationService,
-            RegisteredClientRepository registeredClientRepository) {
+            RegisteredClientRepository registeredClientRepository,
+            ObjectProvider<ClientRepository> clientRepository) {
         this.mfaApplicationService = mfaApplicationService;
         this.registeredClientRepository = registeredClientRepository;
+        this.clientRepository = clientRepository;
     }
 
     @GetMapping(value = "/login", produces = MediaType.TEXT_HTML_VALUE)
@@ -113,7 +120,7 @@ public class AuthPageController {
             HttpServletRequest request) {
         RegisteredClient client = registeredClientRepository.findByClientId(clientId);
         String clientName = client == null ? clientId : client.getClientName();
-        Map<String, String> scopeDescriptions = scopeDescriptions(scope);
+        Map<String, String> scopeDescriptions = scopeDescriptions(scope, client);
         String scopeInputs = scopeDescriptions.keySet().stream()
                 .map(value -> "<input type=\"hidden\" name=\"scope\" value=\"" + escape(value) + "\">")
                 .collect(Collectors.joining("\n"));
@@ -164,18 +171,43 @@ public class AuthPageController {
         return pending instanceof Authentication authentication ? authentication : null;
     }
 
-    private Map<String, String> scopeDescriptions(String scope) {
+    private Map<String, String> scopeDescriptions(String scope, RegisteredClient client) {
+        Map<String, String> applicationScopeDescriptions = applicationScopeDescriptions(client);
         Map<String, String> descriptions = new LinkedHashMap<>();
         Arrays.stream(scope.split(" "))
                 .filter(value -> !value.isBlank())
                 .forEach(value -> descriptions.put(value, switch (value) {
                     case "iam.read" -> "Read tenant IAM resources through protected Admin APIs.";
                     case "iam.write" -> "Create and update tenant IAM resources through protected Admin APIs.";
-                    case "openid" -> "Start an OpenID Connect sign-in request. UserInfo is future work in this project.";
-                    case "profile" -> "Request basic profile context for the signed-in user.";
-                    default -> "Application-specific delegated access requested by this client.";
+                    case "openid" -> "Sign you in.";
+                    case "profile" -> "View your basic profile.";
+                    case "email" -> "View your email address.";
+                    case "groups" -> "View your group memberships.";
+                    case "roles" -> "View your assigned roles.";
+                    case "iam.profile" -> "View IAM-specific profile and authorization details.";
+                    default -> applicationScopeDescriptions.getOrDefault(
+                            value, "Application-specific delegated access requested by this client.");
                 }));
         return descriptions;
+    }
+
+    private Map<String, String> applicationScopeDescriptions(RegisteredClient registeredClient) {
+        ClientRepository repository = clientRepository.getIfAvailable();
+        if (registeredClient == null || repository == null) {
+            return Map.of();
+        }
+        try {
+            return repository.findById(UUID.fromString(registeredClient.getId()))
+                    .stream()
+                    .flatMap(client -> client.getAllowedResourcePermissions().stream())
+                    .collect(Collectors.toMap(
+                            ResourcePermission::getName,
+                            permission -> permission.getDisplayName() + ": " + permission.getDescription(),
+                            (first, ignored) -> first,
+                            LinkedHashMap::new));
+        } catch (IllegalArgumentException ignored) {
+            return Map.of();
+        }
     }
 
     private String csrfInput(HttpServletRequest request) {

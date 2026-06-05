@@ -4,7 +4,8 @@ International IAM Platform is a **portfolio-grade IAM and OAuth2 Authorization
 Server prototype**. It demonstrates tenant-aware identity administration,
 role-based access control (RBAC), OAuth2 Authorization Code + PKCE, application
 scopes, consent management, token lifecycle foundations, audit logging, and
-scope-protected resource API access.
+scope-protected resource API access. It also demonstrates OIDC ID Tokens and a
+scope-aware UserInfo endpoint for tenant-owned user identity claims.
 
 This is a public portfolio project created to demonstrate modern Java backend
 engineering, identity security, system design, React integration, Docker,
@@ -63,6 +64,27 @@ The main local demo proves a complete application-scope flow:
   client.
 - Backend-owned login, optional TOTP challenge, and consent pages.
 - JWT access tokens, JWK support, and scope validation.
+- OIDC ID Tokens with stable user-ID subjects and safe basic identity claims.
+- OIDC UserInfo endpoint at `/userinfo` with claims filtered by granted scopes.
+
+### OIDC Identity Claims
+
+OIDC identity scopes are separate from application authorization scopes and
+Admin API permissions:
+
+| Scope | UserInfo claims |
+| --- | --- |
+| `openid` | `sub` |
+| `profile` | `preferred_username`, `name`, `display_name`, `tenant_id`, `tenant_name`, `account_status` |
+| `email` | `email`, `email_verified` |
+| `groups` | `groups` |
+| `roles` | `roles`, `effective_roles` |
+
+`groups` and `roles` are explicit custom scopes. ID Tokens contain `sub` plus
+small basic identity context, add account status for `profile`, and add email
+claims for `email`. They do not contain groups, roles, effective permissions,
+credential data, secrets, or tokens. `sub` is the stable user ID as a string;
+pairwise subject identifiers and advanced claim mapping remain future work.
 
 ### Applications and Resource Servers
 
@@ -161,7 +183,8 @@ flowchart TB
 System IAM permissions protect this platform's Admin APIs. Application
 permissions describe capabilities exposed by tenant-owned applications and can
 be issued as OAuth2 scopes. They are intentionally separate authorization
-models.
+models. OIDC scopes control identity claims and do not grant application or
+Admin API access.
 
 ## Quick Start
 
@@ -263,13 +286,21 @@ This walkthrough demonstrates that an access token containing
    linked to **Payroll API**.
 7. Open **OAuth2 Demo**.
 8. Select **International IAM Dev Client**.
-9. Select only `payroll.employee.read`.
+9. Select OIDC scopes such as `openid profile email groups roles`, then select
+   `payroll.employee.read` separately.
 10. Generate the authorization URL.
 11. Open the authorization URL.
 12. Log in and approve consent if required.
 13. Copy the returned authorization code.
 14. Exchange the code for an access token using the generated token command.
-15. Call the employee endpoint:
+15. Inspect the returned ID Token and call UserInfo:
+
+    ```bash
+    curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
+      http://localhost:8080/userinfo
+    ```
+
+16. Call the employee endpoint:
 
     ```bash
     curl -i \
@@ -279,7 +310,7 @@ This walkthrough demonstrates that an access token containing
 
     Expected result: HTTP `200`.
 
-16. Call the salary endpoint with the same token:
+17. Call the salary endpoint with the same token:
 
     ```bash
     curl -i \
@@ -316,6 +347,7 @@ For code review and interview discussion, the repository demonstrates:
 - Spring Authorization Server integration with persisted client registration.
 - OAuth2 Authorization Code + PKCE for a public React client.
 - Token scopes generated from tenant-owned application permissions.
+- Scope-aware OIDC ID Token and UserInfo identity claims.
 - Scope-protected resource API behavior, including expected `200` and `403`
   outcomes.
 - Tenant-aware RBAC and effective authorization from direct and group-derived
@@ -357,7 +389,8 @@ platform.
 - The Demo Payroll API is an in-server static resource API, not a real external
   service or real payroll system.
 - MFA UX needs QR code and recovery code polish.
-- OIDC UserInfo and ID token claims need productization.
+- Pairwise OIDC subject identifiers and advanced claim transformation remain
+  future work.
 - SCIM provisioning needs broader protocol and workflow polish.
 - The frontend is functional but is not a fully polished enterprise console.
 - Production secrets, signing keys, session management, rate limiting,

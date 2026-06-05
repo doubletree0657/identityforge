@@ -13,12 +13,14 @@ import io.github.doubletree.iam.platform.security.authentication.PlatformUserDet
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.security.Principal;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,6 +41,7 @@ import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AccessTokenResponse;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
 import org.springframework.security.oauth2.core.http.converter.OAuth2AccessTokenResponseHttpMessageConverter;
+import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationConsentService;
 import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationConsentService;
@@ -76,11 +79,17 @@ import org.springframework.web.util.UriUtils;
 public class AuthorizationServerConfiguration {
 
     @Bean
+    OidcIdentityClaims oidcIdentityClaims() {
+        return new OidcIdentityClaims();
+    }
+
+    @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
     SecurityFilterChain authorizationServerSecurityFilterChain(
             HttpSecurity http,
             AuditApplicationService auditApplicationService,
-            ObjectProvider<ClientRepository> clientRepository) throws Exception {
+            ObjectProvider<ClientRepository> clientRepository,
+            OidcIdentityClaims oidcIdentityClaims) throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 OAuth2AuthorizationServerConfigurer.authorizationServer();
         RequestMatcher authorizationServerEndpointsMatcher = authorizationServerConfigurer.getEndpointsMatcher();
@@ -88,7 +97,17 @@ public class AuthorizationServerConfiguration {
         http
                 .securityMatcher(authorizationServerEndpointsMatcher)
                 .with(authorizationServerConfigurer, authorizationServer -> authorizationServer
-                        .oidc(Customizer.withDefaults())
+                        .oidc(oidc -> oidc.userInfoEndpoint(userInfo -> userInfo
+                                .userInfoMapper(context -> {
+                                    Authentication principal = context.getAuthorization()
+                                            .getAttribute(Principal.class.getName());
+                                    if (principal == null
+                                            || !(principal.getPrincipal() instanceof PlatformUserDetails userDetails)) {
+                                        return new OidcUserInfo(Map.of());
+                                    }
+                                    return new OidcUserInfo(oidcIdentityClaims.userInfoClaims(
+                                            userDetails, context.getAccessToken().getScopes()));
+                                })))
                         .authorizationEndpoint(authorizationEndpoint -> authorizationEndpoint
                                 .consentPage("/oauth2/consent")
                                 .authorizationResponseHandler((request, response, authentication) -> {
@@ -110,9 +129,13 @@ public class AuthorizationServerConfiguration {
                                     response.setStatus(HttpStatus.OK.value());
                                 })))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
-                .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
-                        new LoginUrlAuthenticationEntryPoint("/login"),
-                        new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
+                .exceptionHandling(exceptions -> exceptions
+                        .defaultAuthenticationEntryPointFor(
+                                new BearerTokenAuthenticationEntryPoint(),
+                                AntPathRequestMatcher.antMatcher("/userinfo"))
+                        .defaultAuthenticationEntryPointFor(
+                                new LoginUrlAuthenticationEntryPoint("/login"),
+                                new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.ignoringRequestMatchers(authorizationServerEndpointsMatcher));
 
@@ -394,10 +417,17 @@ public class AuthorizationServerConfiguration {
     }
 
     @Bean
-    OAuth2TokenCustomizer<JwtEncodingContext> jwtTokenCustomizer() {
+    OAuth2TokenCustomizer<JwtEncodingContext> jwtTokenCustomizer(OidcIdentityClaims oidcIdentityClaims) {
         return context -> {
-            if (!OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType())
-                    || !(context.getPrincipal().getPrincipal() instanceof PlatformUserDetails userDetails)) {
+            if (!(context.getPrincipal().getPrincipal() instanceof PlatformUserDetails userDetails)) {
+                return;
+            }
+            if ("id_token".equals(context.getTokenType().getValue())) {
+                oidcIdentityClaims.idTokenClaims(userDetails, context.getAuthorizedScopes())
+                        .forEach(context.getClaims()::claim);
+                return;
+            }
+            if (!OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType())) {
                 return;
             }
             context.getClaims()

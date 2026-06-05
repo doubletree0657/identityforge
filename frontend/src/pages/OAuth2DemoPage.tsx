@@ -9,11 +9,14 @@ import { getApiBaseUrl } from '../api/storage';
 import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
+const OIDC_SCOPES = ['openid', 'profile', 'email', 'groups', 'roles'];
+
 export function OAuth2DemoPage() {
   const [authorizationUrl, setAuthorizationUrl] = useState('');
   const [tokenCommand, setTokenCommand] = useState('');
   const [resourceCommands, setResourceCommands] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedOidcScopes, setSelectedOidcScopes] = useState<string[]>(['openid', 'profile', 'email']);
   const [selectedApplicationScopes, setSelectedApplicationScopes] = useState<string[]>([]);
   const { selectedTenantId } = useTenantContext();
   const clients = useQuery({
@@ -34,6 +37,7 @@ export function OAuth2DemoPage() {
   useEffect(() => {
     if (selectedClientId && !clientItems.some((client) => client.id === selectedClientId)) {
       setSelectedClientId('');
+      setSelectedOidcScopes(['openid', 'profile', 'email']);
       setSelectedApplicationScopes([]);
       setAuthorizationUrl('');
       setTokenCommand('');
@@ -42,10 +46,13 @@ export function OAuth2DemoPage() {
   }, [clientItems, selectedClientId]);
 
   useEffect(() => {
+    if (selectedClient) {
+      setSelectedOidcScopes((scopes) => scopes.filter((scope) => selectedClient.scopes.includes(scope)));
+    }
     setSelectedApplicationScopes((scopes) =>
       scopes.filter((scope) => allowedApplicationScopeNames.includes(scope)),
     );
-  }, [allowedApplicationScopeNames]);
+  }, [allowedApplicationScopeNames, selectedClient]);
 
   function generate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -53,9 +60,9 @@ export function OAuth2DemoPage() {
     const baseUrl = getApiBaseUrl();
     const clientId = selectedClient?.clientId ?? String(form.get('clientId') ?? '');
     const redirectUri = String(form.get('redirectUri') ?? '');
-    const baseScopes = String(form.get('scope') ?? 'iam.read').split(/[,\s]+/).filter(Boolean);
+    const baseScopes = String(form.get('scope') ?? '').split(/[,\s]+/).filter(Boolean);
     const applicationScopes = selectedApplicationScopes;
-    const scope = [...baseScopes, ...applicationScopes].join(' ');
+    const scope = [...selectedOidcScopes, ...baseScopes, ...applicationScopes].join(' ');
     const state = crypto.randomUUID();
     const url = new URL('/oauth2/authorize', baseUrl);
     url.searchParams.set('response_type', 'code');
@@ -107,6 +114,7 @@ curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
                 disabled={clients.isLoading || clients.isError || !selectedTenantId}
                 onChange={(event) => {
                   setSelectedClientId(event.target.value);
+                  setSelectedOidcScopes(['openid', 'profile', 'email']);
                   setSelectedApplicationScopes([]);
                   setAuthorizationUrl('');
                   setTokenCommand('');
@@ -133,6 +141,27 @@ curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
                 <div><span className="font-semibold">Selected client:</span> {selectedClient.name} ({selectedClient.clientId})</div>
                 <div><span className="font-semibold">Linked application:</span> {selectedClient.resourceServerName ?? 'None linked'}</div>
                 <div><span className="font-semibold">Client scopes:</span> {selectedClient.scopes.length > 0 ? selectedClient.scopes.join(', ') : 'None configured'}</div>
+                <div className="grid gap-1">
+                  <span className="font-semibold">OIDC identity scopes</span>
+                  {OIDC_SCOPES.map((scope) => (
+                    <label key={scope} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        value={scope}
+                        checked={selectedOidcScopes.includes(scope)}
+                        disabled={!selectedClient.scopes.includes(scope)}
+                        onChange={(event) => {
+                          setSelectedOidcScopes((current) =>
+                            event.target.checked
+                              ? [...current, scope]
+                              : current.filter((value) => value !== scope),
+                          );
+                        }}
+                      />
+                      <span>{scope}</span>
+                    </label>
+                  ))}
+                </div>
                 <div className="grid gap-1">
                   <span className="font-semibold">Allowed application scopes</span>
                   {selectedClient.allowedResourcePermissions.length === 0 && <span className="text-slate-500">No application scopes assigned.</span>}
@@ -170,8 +199,30 @@ curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
                 required
               />
             </Field>
-            <Field label="Base scopes" hint="Use scopes explicitly configured on the client. Application scopes are selected separately above.">
-              <Input key={selectedClient?.id ?? 'manual-scope'} name="scope" defaultValue={selectedClient?.scopes[0] ?? 'iam.read'} />
+            {!selectedClient && (
+              <div className="grid gap-1 rounded-md border border-line p-3 text-sm">
+                <span className="font-semibold">OIDC identity scopes</span>
+                {OIDC_SCOPES.map((scope) => (
+                  <label key={scope} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      value={scope}
+                      checked={selectedOidcScopes.includes(scope)}
+                      onChange={(event) => {
+                        setSelectedOidcScopes((current) =>
+                          event.target.checked
+                            ? [...current, scope]
+                            : current.filter((value) => value !== scope),
+                        );
+                      }}
+                    />
+                    <span>{scope}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <Field label="Other client scopes" hint="Use explicitly configured non-OIDC scopes such as iam.read. Application scopes are selected separately above.">
+              <Input key={selectedClient?.id ?? 'manual-scope'} name="scope" defaultValue={selectedClient?.scopes.filter((scope) => !OIDC_SCOPES.includes(scope)).join(' ') ?? 'iam.read'} />
             </Field>
             <Button type="submit" disabled={selectedScopesNotAllowed.length > 0}>Generate</Button>
           </form>
@@ -179,12 +230,12 @@ curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
         <Card title="Local demo steps">
           <ol className="grid list-decimal gap-3 pl-5 text-sm text-slate-700">
             <li>Select the International IAM Dev Client or another persisted client linked to Payroll API.</li>
-            <li>Select allowed application scopes such as payroll.employee.read or payroll.salary.read.</li>
+            <li>Select OIDC identity scopes and, separately, allowed application scopes such as payroll.employee.read.</li>
             <li>Generate the authorization URL and open it in a browser.</li>
             <li>Log in as admin or a test user, then approve consent if the client requires it.</li>
             <li>Copy the authorization code from the redirect URL.</li>
             <li>Exchange the code for a token with the generated curl command.</li>
-            <li>Call the demo Payroll resource API with the returned access token.</li>
+            <li>Inspect the ID Token, call UserInfo, and call the demo Payroll resource API with the returned access token.</li>
           </ol>
           <div className="mt-4 flex flex-wrap gap-3 text-sm">
             <Link className="font-medium text-brand hover:underline" to="/clients">Manage OAuth2 clients</Link>
@@ -200,6 +251,12 @@ curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
               <div>
                 <div className="text-sm font-semibold">Token exchange command</div>
                 <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">{tokenCommand}</pre>
+              </div>
+              <div>
+                <div className="text-sm font-semibold">OIDC response inspection</div>
+                <p className="mt-1 text-sm text-slate-600">Decode the returned ID Token locally with a trusted JWT inspection tool. Do not log tokens or paste production tokens into third-party sites.</p>
+                <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">{`curl -H "Authorization: Bearer <ACCESS_TOKEN>" \\
+  ${getApiBaseUrl()}/userinfo`}</pre>
               </div>
               {resourceCommands && (
                 <div>

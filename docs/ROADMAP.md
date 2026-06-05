@@ -7,7 +7,8 @@ Authorization Server prototype** milestone. The repository now demonstrates a
 working Admin Console, tenant-aware identity administration, backend-enforced
 RBAC, OAuth2 Authorization Code + PKCE, tenant-owned application scopes, token
 lifecycle foundations, consent management, audit logging, and a complete local
-scope-protected resource API demo.
+scope-protected resource API demo. OIDC ID Token and UserInfo identity claims
+are also implemented with explicit privacy boundaries.
 
 The next phase is not to claim production readiness. It is to improve portfolio
 presentation, complete selected identity protocol foundations, and harden the
@@ -90,6 +91,16 @@ more depth.
 - JDBC-backed consent storage, safe consent listing, and consent revocation.
 - Token lifecycle and consent audit events without token or secret values.
 
+### OIDC UserInfo and ID Token Claims
+
+- Stable `sub` values based on immutable user IDs.
+- Safe basic ID Token identity claims without roles, permissions, credentials,
+  secrets, or token values.
+- Scope-aware `/userinfo` responses for `openid`, `profile`, `email`, and the
+  custom `groups` and `roles` scopes.
+- Explicit separation between OIDC identity claims, application scopes, and
+  Admin API permissions.
+
 ### Audit Logging
 
 - Audit events across identity administration, authentication, MFA, OAuth2
@@ -110,7 +121,8 @@ more depth.
 - The Demo Payroll API is an in-server static resource API, not a real external
   business service.
 - MFA UX needs QR code and recovery code polish.
-- OIDC UserInfo and ID token claims need productization.
+- Pairwise subject identifiers and advanced claim transformation remain future
+  work.
 - SCIM-style provisioning needs broader protocol and workflow polish.
 - The frontend is functional but is not a fully polished enterprise console.
 - Production secrets, signing keys, session management, rate limiting,
@@ -124,12 +136,6 @@ more depth.
 - Add current screenshots and a concise visual demo narrative.
 - Keep README walkthroughs aligned with the implemented Admin Console.
 - Improve reviewer orientation without overstating product maturity.
-
-### OIDC UserInfo and ID Token Claims
-
-- Define stable identity claims and privacy boundaries.
-- Add UserInfo behavior and productized ID token claims.
-- Test claim issuance across relevant client and user scenarios.
 
 ### MFA QR Code and Recovery Codes
 
@@ -163,6 +169,12 @@ more depth.
 - Refine login, consent, and MFA challenge presentation.
 
 ## Later Roadmap
+
+### Advanced OIDC Claim Mapping
+
+- Add pairwise subject identifiers where client privacy requirements justify
+  them.
+- Design an explicit claim transformation and release policy model.
 
 ### Policy Engine / PDP Foundation
 

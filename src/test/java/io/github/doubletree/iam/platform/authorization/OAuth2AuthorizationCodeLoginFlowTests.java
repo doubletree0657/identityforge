@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.doubletree.iam.platform.application.result.ClientSecretResult;
 import io.github.doubletree.iam.platform.application.service.ClientApplicationService;
+import io.github.doubletree.iam.platform.application.service.GroupApplicationService;
 import io.github.doubletree.iam.platform.application.service.ResourceServerApplicationService;
 import io.github.doubletree.iam.platform.application.service.SystemPermissionCatalogService;
 import io.github.doubletree.iam.platform.application.service.TenantApplicationService;
@@ -85,6 +86,9 @@ class OAuth2AuthorizationCodeLoginFlowTests {
 
     @Autowired
     private ResourceServerApplicationService resourceServerApplicationService;
+
+    @Autowired
+    private GroupApplicationService groupApplicationService;
 
     @Autowired
     private AuditLogRepository auditLogRepository;
@@ -222,6 +226,95 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].employeeId").value("E-1001"));
+    }
+
+    @Test
+    void oidcIdTokenAndUserInfoReturnOnlyClaimsAllowedByGrantedIdentityScopes() throws Exception {
+        FlowFixture fixture = createFlowFixture();
+        fixture.user().setEmail("oidc-user@example.test");
+        fixture.user().setEmailVerified(true);
+        userApplicationService.updateUser(
+                fixture.user().getId(), null, fixture.user().getEmail(), true, null, null, null);
+        var group = groupApplicationService.createGroup(
+                fixture.user().getTenant().getId(), "oidc-test-group-" + UUID.randomUUID());
+        groupApplicationService.addUserToGroup(group.getId(), fixture.user().getId());
+
+        mockMvc.perform(get("/userinfo"))
+                .andExpect(status().isUnauthorized());
+
+        TokenResponse openidToken = completeAuthorizationCodeFlow(fixture, "openid", "oidc-openid-state");
+        assertThat(openidToken.idToken()).isNotBlank();
+        Jwt openidIdToken = jwtDecoder.decode(openidToken.idToken());
+        assertThat(openidIdToken.getSubject()).isEqualTo(fixture.user().getId().toString());
+        assertThat(openidIdToken.getClaimAsString("preferred_username")).isEqualTo(fixture.user().getUsername());
+        assertThat(openidIdToken.getClaimAsString("account_status")).isNull();
+        assertThat(openidIdToken.getClaimAsString("email")).isNull();
+
+        mockMvc.perform(get("/userinfo")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + openidToken.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sub").value(fixture.user().getId().toString()))
+                .andExpect(jsonPath("$.preferred_username").doesNotExist())
+                .andExpect(jsonPath("$.email").doesNotExist())
+                .andExpect(jsonPath("$.groups").doesNotExist())
+                .andExpect(jsonPath("$.roles").doesNotExist());
+
+        TokenResponse profileToken = completeAuthorizationCodeFlow(
+                fixture, "openid profile", "oidc-profile-state");
+        Jwt profileIdToken = jwtDecoder.decode(profileToken.idToken());
+        assertThat(profileIdToken.getClaimAsString("account_status")).isEqualTo("ACTIVE");
+        assertThat(profileIdToken.getClaimAsString("email")).isNull();
+        mockMvc.perform(get("/userinfo")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + profileToken.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.preferred_username").value(fixture.user().getUsername()))
+                .andExpect(jsonPath("$.display_name").value(fixture.user().getDisplayName()))
+                .andExpect(jsonPath("$.tenant_id").value(fixture.user().getTenant().getId().toString()))
+                .andExpect(jsonPath("$.tenant_name").value(profileIdToken.getClaimAsString("tenant_name")))
+                .andExpect(jsonPath("$.account_status").value("ACTIVE"))
+                .andExpect(jsonPath("$.email").doesNotExist());
+
+        TokenResponse allIdentityToken = completeAuthorizationCodeFlow(
+                fixture, "openid profile email groups roles", "oidc-all-identity-state");
+        Jwt allIdentityIdToken = jwtDecoder.decode(allIdentityToken.idToken());
+        assertThat(allIdentityIdToken.getClaimAsString("email")).isEqualTo("oidc-user@example.test");
+        assertThat(allIdentityIdToken.getClaimAsBoolean("email_verified")).isTrue();
+        assertThat(allIdentityIdToken.getClaims()).doesNotContainKeys("groups", "roles", "effective_roles", "effective_permissions");
+
+        MvcResult userInfoResult = mockMvc.perform(get("/userinfo")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + allIdentityToken.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("oidc-user@example.test"))
+                .andExpect(jsonPath("$.email_verified").value(true))
+                .andExpect(jsonPath("$.groups[0]").value(group.getName()))
+                .andExpect(jsonPath("$.roles").isArray())
+                .andExpect(jsonPath("$.effective_roles").isArray())
+                .andReturn();
+        assertThat(objectMapper.readTree(userInfoResult.getResponse().getContentAsString()).fieldNames())
+                .toIterable()
+                .doesNotContain(
+                        "passwordHash", "password", "credentialsVersion", "totpSecret", "encryptedTotpSecret",
+                        "clientSecretHash", "clientSecret", "access_token", "refresh_token", "authorization_code");
+    }
+
+    @Test
+    void applicationScopeDoesNotCreateOidcIdentityResponse() throws Exception {
+        FlowFixture fixture = createFlowFixture();
+        ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
+                fixture.client().client().getTenant().getId(), "oidc-separation-api", "OIDC Separation API", null);
+        ResourcePermission permission = resourceServerApplicationService.createResourcePermission(
+                resourceServer.getId(), "payroll.employee.read", "Read employees", null);
+        clientApplicationService.updateClient(
+                fixture.client().client().getId(), null, null, null, null, null, null, null, null, resourceServer.getId());
+        clientApplicationService.assignResourcePermissionToClient(fixture.client().client().getId(), permission.getId());
+
+        TokenResponse token = completeAuthorizationCodeFlow(
+                fixture, "payroll.employee.read", "application-scope-no-identity-state");
+        assertThat(token.idToken()).isNull();
+        mockMvc.perform(get("/userinfo")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.accessToken()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("insufficient_scope"));
     }
 
     @Test
@@ -478,7 +571,7 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                 requireConsent,
                 Set.of(REDIRECT_URI),
                 Set.of("authorization_code", "refresh_token"),
-                Set.of("iam.read", "iam.write"),
+                Set.of("iam.read", "iam.write", "openid", "profile", "email", "groups", "roles"),
                 Set.of("client_secret_basic"));
 
         return new FlowFixture(user, client);
@@ -644,7 +737,8 @@ class OAuth2AuthorizationCodeLoginFlowTests {
         JsonNode tokenResponse = objectMapper.readTree(result.getResponse().getContentAsString());
         return new TokenResponse(
                 tokenResponse.get("access_token").asText(),
-                tokenResponse.has("refresh_token") ? tokenResponse.get("refresh_token").asText() : null);
+                tokenResponse.has("refresh_token") ? tokenResponse.get("refresh_token").asText() : null,
+                tokenResponse.has("id_token") ? tokenResponse.get("id_token").asText() : null);
     }
 
     private TokenResponse refreshAccessToken(
@@ -669,7 +763,8 @@ class OAuth2AuthorizationCodeLoginFlowTests {
         JsonNode tokenResponse = objectMapper.readTree(result.getResponse().getContentAsString());
         return new TokenResponse(
                 tokenResponse.get("access_token").asText(),
-                tokenResponse.has("refresh_token") ? tokenResponse.get("refresh_token").asText() : null);
+                tokenResponse.has("refresh_token") ? tokenResponse.get("refresh_token").asText() : null,
+                tokenResponse.has("id_token") ? tokenResponse.get("id_token").asText() : null);
     }
 
     private String extractCode(String redirectUrl, String expectedState) {
@@ -702,6 +797,6 @@ class OAuth2AuthorizationCodeLoginFlowTests {
     private record AuthenticatedSession(MockHttpSession session, String authorizationRedirect) {
     }
 
-    private record TokenResponse(String accessToken, String refreshToken) {
+    private record TokenResponse(String accessToken, String refreshToken, String idToken) {
     }
 }
