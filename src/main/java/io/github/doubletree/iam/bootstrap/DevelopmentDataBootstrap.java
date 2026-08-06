@@ -1,0 +1,236 @@
+package io.github.doubletree.iam.bootstrap;
+
+import io.github.doubletree.iam.domain.Client;
+import io.github.doubletree.iam.domain.ClientStatus;
+import io.github.doubletree.iam.domain.ClientType;
+import io.github.doubletree.iam.domain.ResourcePermission;
+import io.github.doubletree.iam.domain.ResourceServer;
+import io.github.doubletree.iam.domain.Role;
+import io.github.doubletree.iam.domain.Tenant;
+import io.github.doubletree.iam.domain.User;
+import io.github.doubletree.iam.application.service.SystemPermissionCatalogService;
+import io.github.doubletree.iam.application.service.UserApplicationService;
+import io.github.doubletree.iam.repository.ClientRepository;
+import io.github.doubletree.iam.repository.ResourcePermissionRepository;
+import io.github.doubletree.iam.repository.ResourceServerRepository;
+import io.github.doubletree.iam.repository.RoleRepository;
+import io.github.doubletree.iam.repository.TenantRepository;
+import io.github.doubletree.iam.repository.UserRepository;
+import java.util.List;
+import java.util.Set;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+@Component
+@Profile("dev")
+public class DevelopmentDataBootstrap implements ApplicationRunner {
+
+    static final String DEVELOPMENT_TENANT_NAME = "Development Tenant";
+    static final String DEVELOPMENT_TENANT_SLUG = "development";
+    static final String DEVELOPMENT_CLIENT_ID = "identityforge-dev";
+    static final String DEVELOPMENT_CLIENT_NAME = "IdentityForge Dev Client";
+    static final String ADMIN_CONSOLE_CLIENT_ID = "identityforge-console";
+    static final String ADMIN_CONSOLE_CLIENT_NAME = "IdentityForge Console";
+    static final String PAYROLL_RESOURCE_SERVER_IDENTIFIER = "payroll-api";
+    static final String PAYROLL_RESOURCE_SERVER_NAME = "Payroll API";
+    static final String ADMIN_ROLE_NAME = SystemPermissionCatalogService.PLATFORM_ADMIN_ROLE_NAME;
+    static final String ADMIN_DISPLAY_NAME = "Development Super Admin";
+    private static final String DEVELOPMENT_CLIENT_SECRET = "secret";
+    private static final Set<String> PAYROLL_PERMISSION_NAMES = Set.of(
+            "payroll.employee.read",
+            "payroll.salary.read",
+            "payroll.salary.write");
+
+    private static final Set<String> DEVELOPMENT_REDIRECT_URIS = Set.of(
+            "http://127.0.0.1:8080/oauth2/demo/callback",
+            "http://localhost:5173/oauth2/callback");
+    private static final Set<String> DEVELOPMENT_GRANT_TYPES = Set.of("client_credentials", "authorization_code", "refresh_token");
+    private static final Set<String> DEVELOPMENT_SCOPES = Set.of(
+            "iam.read", "iam.write", "openid", "profile", "email", "groups", "roles");
+    private static final Set<String> DEVELOPMENT_AUTHENTICATION_METHODS = Set.of("client_secret_basic");
+    private static final Set<String> ADMIN_CONSOLE_REDIRECT_URIS = Set.of("http://localhost:5173/oauth2/callback");
+    private static final Set<String> ADMIN_CONSOLE_GRANT_TYPES = Set.of("authorization_code");
+    private static final Set<String> ADMIN_CONSOLE_SCOPES = Set.of("iam.read", "iam.write", "openid", "profile");
+    private static final Set<String> ADMIN_CONSOLE_AUTHENTICATION_METHODS = Set.of("none");
+    private final TenantRepository tenantRepository;
+    private final ClientRepository clientRepository;
+    private final ResourceServerRepository resourceServerRepository;
+    private final ResourcePermissionRepository resourcePermissionRepository;
+    private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final SystemPermissionCatalogService systemPermissionCatalogService;
+    private final UserApplicationService userApplicationService;
+    private final PasswordEncoder passwordEncoder;
+    private final boolean adminBootstrapEnabled;
+    private final String adminUsername;
+    private final String adminPassword;
+    private final boolean resetAdminPassword;
+
+    public DevelopmentDataBootstrap(
+            TenantRepository tenantRepository,
+            ClientRepository clientRepository,
+            ResourceServerRepository resourceServerRepository,
+            ResourcePermissionRepository resourcePermissionRepository,
+            UserRepository userRepository,
+            RoleRepository roleRepository,
+            SystemPermissionCatalogService systemPermissionCatalogService,
+            UserApplicationService userApplicationService,
+            PasswordEncoder passwordEncoder,
+            @Value("${app.bootstrap.admin.enabled:false}") boolean adminBootstrapEnabled,
+            @Value("${app.bootstrap.admin.username:admin}") String adminUsername,
+            @Value("${app.bootstrap.admin.password:admin123456}") String adminPassword,
+            @Value("${app.bootstrap.admin.reset-password:false}") boolean resetAdminPassword) {
+        this.tenantRepository = tenantRepository;
+        this.clientRepository = clientRepository;
+        this.resourceServerRepository = resourceServerRepository;
+        this.resourcePermissionRepository = resourcePermissionRepository;
+        this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+        this.systemPermissionCatalogService = systemPermissionCatalogService;
+        this.userApplicationService = userApplicationService;
+        this.passwordEncoder = passwordEncoder;
+        this.adminBootstrapEnabled = adminBootstrapEnabled;
+        this.adminUsername = adminUsername;
+        this.adminPassword = adminPassword;
+        this.resetAdminPassword = resetAdminPassword;
+    }
+
+    @Override
+    @Transactional
+    public void run(ApplicationArguments args) {
+        initialize();
+    }
+
+    @Transactional
+    public void initialize() {
+        Tenant tenant = tenantRepository.findBySlug(DEVELOPMENT_TENANT_SLUG)
+                .orElseGet(this::createDevelopmentTenant);
+        ResourceServer payrollResourceServer = initializePayrollResourceServer(tenant);
+        List<Client> existingClients = clientRepository.findAllByClientId(DEVELOPMENT_CLIENT_ID);
+        if (existingClients.isEmpty()) {
+            createDevelopmentClient(tenant, payrollResourceServer);
+        } else {
+            existingClients.stream()
+                    .filter(client -> client.getTenant().getId().equals(tenant.getId()))
+                    .findFirst()
+                    .or(() -> existingClients.stream().findFirst())
+                    .ifPresent(client -> refreshDevelopmentClient(client, payrollResourceServer));
+        }
+        initializeAdminConsoleClient(tenant);
+        systemPermissionCatalogService.seedRoleTemplates(tenant);
+        if (adminBootstrapEnabled) {
+            initializeAdminUser(tenant);
+        }
+    }
+
+    private Tenant createDevelopmentTenant() {
+        Tenant tenant = Tenant.create(DEVELOPMENT_TENANT_NAME);
+        tenant.setSlug(DEVELOPMENT_TENANT_SLUG);
+        return tenantRepository.save(tenant);
+    }
+
+    private void createDevelopmentClient(Tenant tenant, ResourceServer payrollResourceServer) {
+        Client client = Client.create(tenant, DEVELOPMENT_CLIENT_ID, DEVELOPMENT_CLIENT_NAME);
+        refreshDevelopmentClient(client, payrollResourceServer);
+    }
+
+    private void refreshDevelopmentClient(Client client, ResourceServer payrollResourceServer) {
+        client.setClientName(DEVELOPMENT_CLIENT_NAME);
+        client.setClientType(ClientType.CONFIDENTIAL);
+        client.setStatus(ClientStatus.ACTIVE);
+        client.setRequirePkce(false);
+        client.setRequireConsent(false);
+        client.setRedirectUris(DEVELOPMENT_REDIRECT_URIS);
+        client.setGrantTypes(DEVELOPMENT_GRANT_TYPES);
+        client.setScopes(DEVELOPMENT_SCOPES);
+        client.setAuthenticationMethods(DEVELOPMENT_AUTHENTICATION_METHODS);
+        client.setResourceServer(payrollResourceServer);
+        client.clearAllowedResourcePermissions();
+        resourcePermissionRepository.findByResourceServerId(payrollResourceServer.getId())
+                .forEach(client::addAllowedResourcePermission);
+        if (client.getClientSecretHash() == null
+                || !passwordEncoder.matches(DEVELOPMENT_CLIENT_SECRET, client.getClientSecretHash())) {
+            client.setClientSecretHash(passwordEncoder.encode(DEVELOPMENT_CLIENT_SECRET));
+        }
+        client.validateRegistration();
+        clientRepository.save(client);
+    }
+
+    private ResourceServer initializePayrollResourceServer(Tenant tenant) {
+        ResourceServer resourceServer = resourceServerRepository.findByTenantIdAndIdentifier(
+                        tenant.getId(), PAYROLL_RESOURCE_SERVER_IDENTIFIER)
+                .orElseGet(() -> resourceServerRepository.save(
+                        ResourceServer.create(tenant, PAYROLL_RESOURCE_SERVER_IDENTIFIER, PAYROLL_RESOURCE_SERVER_NAME)));
+        resourceServer.setName(PAYROLL_RESOURCE_SERVER_NAME);
+        resourceServer.setDescription("Development demo resource server for OAuth2 application scope enforcement.");
+        ResourceServer saved = resourceServerRepository.save(resourceServer);
+        PAYROLL_PERMISSION_NAMES.forEach(permissionName -> initializePayrollPermission(saved, permissionName));
+        return saved;
+    }
+
+    private void initializePayrollPermission(ResourceServer resourceServer, String permissionName) {
+        resourcePermissionRepository.findByResourceServerIdAndName(resourceServer.getId(), permissionName)
+                .orElseGet(() -> resourcePermissionRepository.save(ResourcePermission.create(
+                        resourceServer,
+                        permissionName,
+                        displayName(permissionName),
+                        "Allows demo access for " + permissionName + ".")));
+    }
+
+    private String displayName(String permissionName) {
+        return switch (permissionName) {
+            case "payroll.employee.read" -> "Read payroll employees";
+            case "payroll.salary.read" -> "Read payroll salaries";
+            case "payroll.salary.write" -> "Write payroll salaries";
+            default -> permissionName;
+        };
+    }
+
+    private void initializeAdminConsoleClient(Tenant tenant) {
+        List<Client> existingClients = clientRepository.findAllByClientId(ADMIN_CONSOLE_CLIENT_ID);
+        if (existingClients.isEmpty()) {
+            Client client = Client.create(tenant, ADMIN_CONSOLE_CLIENT_ID, ADMIN_CONSOLE_CLIENT_NAME);
+            refreshAdminConsoleClient(client);
+            return;
+        }
+        existingClients.stream()
+                .filter(client -> client.getTenant().getId().equals(tenant.getId()))
+                .findFirst()
+                .or(() -> existingClients.stream().findFirst())
+                .ifPresent(this::refreshAdminConsoleClient);
+    }
+
+    private void refreshAdminConsoleClient(Client client) {
+        client.setClientName(ADMIN_CONSOLE_CLIENT_NAME);
+        client.setClientSecretHash(null);
+        client.setClientType(ClientType.PUBLIC);
+        client.setStatus(ClientStatus.ACTIVE);
+        client.setRequirePkce(true);
+        client.setRequireConsent(false);
+        client.setRedirectUris(ADMIN_CONSOLE_REDIRECT_URIS);
+        client.setGrantTypes(ADMIN_CONSOLE_GRANT_TYPES);
+        client.setScopes(ADMIN_CONSOLE_SCOPES);
+        client.setAuthenticationMethods(ADMIN_CONSOLE_AUTHENTICATION_METHODS);
+        client.validateRegistration();
+        clientRepository.save(client);
+    }
+
+    private void initializeAdminUser(Tenant tenant) {
+        Role adminRole = roleRepository.findByTenantIdAndName(tenant.getId(), ADMIN_ROLE_NAME)
+                .orElseThrow(() -> new IllegalStateException("Platform admin role template was not initialized"));
+
+        User adminUser = userRepository.findByTenantIdAndUsername(tenant.getId(), adminUsername)
+                .orElseGet(() -> userApplicationService.createUser(tenant.getId(), adminUsername, ADMIN_DISPLAY_NAME));
+        adminUser.getRoles().add(adminRole);
+        userRepository.save(adminUser);
+        if (adminUser.getPasswordCredential() == null || resetAdminPassword) {
+            userApplicationService.setInitialPassword(adminUser.getId(), adminPassword);
+        }
+    }
+
+}
