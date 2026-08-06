@@ -55,7 +55,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest(properties = "spring.application.name=international-iam-platform")
+@SpringBootTest(properties = "spring.application.name=identityforge")
 @AutoConfigureMockMvc
 @Testcontainers
 class OAuth2AuthorizationCodeLoginFlowTests {

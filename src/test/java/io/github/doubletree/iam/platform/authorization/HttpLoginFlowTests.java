@@ -46,7 +46,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest(properties = "spring.application.name=international-iam-platform")
+@SpringBootTest(properties = "spring.application.name=identityforge")
 @AutoConfigureMockMvc
 @Testcontainers
 class HttpLoginFlowTests {
@@ -88,16 +88,16 @@ class HttpLoginFlowTests {
     @BeforeEach
     void seedDevelopmentClient() {
         auditLogRepository.deleteAll();
-        if (!clientRepository.findAllByClientId("international-iam-dev").isEmpty()) {
+        if (!clientRepository.findAllByClientId("identityforge-dev").isEmpty()) {
             return;
         }
 
         Tenant tenant = tenantRepository.save(Tenant.create("HTTP Login Flow Client Tenant"));
-        Client client = Client.create(tenant, "international-iam-dev", "International IAM Dev");
+        Client client = Client.create(tenant, "identityforge-dev", "IdentityForge Dev");
         client.setClientSecretHash(passwordEncoder.encode("secret"));
         client.setRequirePkce(false);
         client.setRequireConsent(false);
-        client.setRedirectUris(Set.of("http://127.0.0.1:8080/login/oauth2/code/international-iam-dev"));
+        client.setRedirectUris(Set.of("http://127.0.0.1:8080/login/oauth2/code/identityforge-dev"));
         client.setGrantTypes(Set.of("client_credentials", "authorization_code"));
         client.setScopes(Set.of("iam.read", "iam.write"));
         client.setAuthenticationMethods(Set.of("client_secret_basic"));
@@ -257,14 +257,14 @@ class HttpLoginFlowTests {
                         .session(session))
                 .andExpect(status().isFound())
                 .andExpect(header().string(HttpHeaders.LOCATION,
-                        startsWith("http://127.0.0.1:8080/login/oauth2/code/international-iam-dev?")));
+                        startsWith("http://127.0.0.1:8080/login/oauth2/code/identityforge-dev?")));
     }
 
     private String authorizationRequest(String state) {
         return "/oauth2/authorize"
                 + "?response_type=code"
-                + "&client_id=international-iam-dev"
-                + "&redirect_uri=http://127.0.0.1:8080/login/oauth2/code/international-iam-dev"
+                + "&client_id=identityforge-dev"
+                + "&redirect_uri=http://127.0.0.1:8080/login/oauth2/code/identityforge-dev"
                 + "&scope=iam.read"
                 + "&state=" + state;
     }

@@ -229,7 +229,7 @@ curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
         </Card>
         <Card title="Local demo steps">
           <ol className="grid list-decimal gap-3 pl-5 text-sm text-slate-700">
-            <li>Select the International IAM Dev Client or another persisted client linked to Payroll API.</li>
+            <li>Select the IdentityForge Dev Client or another persisted client linked to Payroll API.</li>
             <li>Select OIDC identity scopes and, separately, allowed application scopes such as payroll.employee.read.</li>
             <li>Generate the authorization URL and open it in a browser.</li>
             <li>Log in as admin or a test user, then approve consent if the client requires it.</li>

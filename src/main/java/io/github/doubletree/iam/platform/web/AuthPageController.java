@@ -239,7 +239,7 @@ public class AuthPageController {
                         <head>
                           <meta charset="utf-8">
                           <meta name="viewport" content="width=device-width, initial-scale=1">
-                          <title>International IAM</title>
+                          <title>IdentityForge</title>
                           <style>
                             body{margin:0;background:#f5f7fb;color:#172033;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
                             main{width:min(460px,calc(100vw - 32px));margin:8vh auto;padding:24px;background:#fff;border:1px solid #d9e0ea;border-radius:8px;box-shadow:0 10px 30px rgba(15,23,42,.08)}

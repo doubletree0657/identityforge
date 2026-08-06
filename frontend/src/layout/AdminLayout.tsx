@@ -45,7 +45,7 @@ export function AdminLayout() {
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-line bg-white lg:block">
         <div className="border-b border-line px-5 py-5">
           <div className="text-lg font-semibold text-ink">IAM Admin</div>
-          <div className="mt-1 text-xs text-slate-500">International IAM Platform</div>
+          <div className="mt-1 text-xs text-slate-500">IdentityForge</div>
         </div>
         <nav className="grid gap-1 p-3">
           {navItems.map((item) => {

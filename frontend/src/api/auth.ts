@@ -2,7 +2,7 @@ import axios from 'axios';
 import { apiRequest } from './client';
 import { clearAccessToken, getApiBaseUrl, setAuthToken } from './storage';
 
-const CLIENT_ID = 'iam-admin-console';
+const CLIENT_ID = 'identityforge-console';
 const REDIRECT_PATH = '/oauth2/callback';
 const SCOPE = 'openid profile iam.read iam.write';
 const CODE_VERIFIER_KEY = 'iam.adminConsole.pkce.codeVerifier';

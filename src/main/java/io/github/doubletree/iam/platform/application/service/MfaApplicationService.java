@@ -183,9 +183,9 @@ public class MfaApplicationService {
     }
 
     private String otpauthUri(User user, String secret) {
-        return "otpauth://totp/International%20IAM:" + user.getUsername()
+        return "otpauth://totp/IdentityForge:" + user.getUsername()
                 + "?secret=" + secret
-                + "&issuer=International%20IAM&algorithm=SHA1&digits=6&period=30";
+                + "&issuer=IdentityForge&algorithm=SHA1&digits=6&period=30";
     }
 
     private String encodeBase32(byte[] bytes) {

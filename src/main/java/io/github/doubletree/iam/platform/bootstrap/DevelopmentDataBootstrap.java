@@ -32,10 +32,10 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
 
     static final String DEVELOPMENT_TENANT_NAME = "Development Tenant";
     static final String DEVELOPMENT_TENANT_SLUG = "development";
-    static final String DEVELOPMENT_CLIENT_ID = "international-iam-dev";
-    static final String DEVELOPMENT_CLIENT_NAME = "International IAM Dev Client";
-    static final String ADMIN_CONSOLE_CLIENT_ID = "iam-admin-console";
-    static final String ADMIN_CONSOLE_CLIENT_NAME = "IAM Admin Console";
+    static final String DEVELOPMENT_CLIENT_ID = "identityforge-dev";
+    static final String DEVELOPMENT_CLIENT_NAME = "IdentityForge Dev Client";
+    static final String ADMIN_CONSOLE_CLIENT_ID = "identityforge-console";
+    static final String ADMIN_CONSOLE_CLIENT_NAME = "IdentityForge Console";
     static final String PAYROLL_RESOURCE_SERVER_IDENTIFIER = "payroll-api";
     static final String PAYROLL_RESOURCE_SERVER_NAME = "Payroll API";
     static final String ADMIN_ROLE_NAME = SystemPermissionCatalogService.PLATFORM_ADMIN_ROLE_NAME;

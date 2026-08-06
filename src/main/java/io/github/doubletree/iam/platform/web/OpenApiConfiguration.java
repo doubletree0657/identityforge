@@ -13,10 +13,10 @@ public class OpenApiConfiguration {
     public static final String BEARER_AUTH = "bearerAuth";
 
     @Bean
-    OpenAPI internationalIamOpenApi() {
+    OpenAPI identityForgeOpenApi() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("International IAM Platform API")
+                        .title("IdentityForge API")
                         .version("0.1.0")
                         .description("""
                                 Public portfolio IAM platform API.

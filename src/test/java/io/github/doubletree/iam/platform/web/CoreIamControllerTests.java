@@ -773,7 +773,7 @@ class CoreIamControllerTests {
         mockMvc.perform(get("/api/users")
                         .queryParam("tenantId", TENANT_ID.toString())
                         .with(jwt().jwt(token -> token
-                                        .subject("international-iam-dev")
+                                        .subject("identityforge-dev")
                                         .claim("scope", "iam.read iam.write")
                                         .claim("grant_type", "client_credentials"))
                                 .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"))))

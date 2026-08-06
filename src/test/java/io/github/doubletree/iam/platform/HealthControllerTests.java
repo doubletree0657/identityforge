@@ -13,12 +13,12 @@ class HealthControllerTests {
     @Test
     void healthReturnsUpStatusAndServiceName() throws Exception {
         MockMvc mockMvc = MockMvcBuilders
-                .standaloneSetup(new HealthController("international-iam-platform"))
+                .standaloneSetup(new HealthController("identityforge"))
                 .build();
 
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.service").value("international-iam-platform"));
+                .andExpect(jsonPath("$.service").value("identityforge"));
     }
 }

@@ -4,10 +4,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class InternationalIamPlatformApplication {
+public class IdentityForgeApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(InternationalIamPlatformApplication.class, args);
+        SpringApplication.run(IdentityForgeApplication.class, args);
     }
 
 }

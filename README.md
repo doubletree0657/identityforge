@@ -1,11 +1,11 @@
-# International IAM Platform
+# IdentityForge
 
-International IAM Platform is a **portfolio-grade IAM and OAuth2 Authorization
-Server prototype**. It demonstrates tenant-aware identity administration,
-role-based access control (RBAC), OAuth2 Authorization Code + PKCE, application
-scopes, consent management, token lifecycle foundations, audit logging, and
-scope-protected resource API access. It also demonstrates OIDC ID Tokens and a
-scope-aware UserInfo endpoint for tenant-owned user identity claims.
+IdentityForge is a portfolio-grade Identity and Access Management platform.
+It demonstrates tenant-aware identity administration, role-based access control
+(RBAC), OAuth2 Authorization Code + PKCE, application scopes, consent
+management, token lifecycle foundations, audit logging, and scope-protected
+resource API access. It also demonstrates OIDC ID Tokens and a scope-aware
+UserInfo endpoint for tenant-owned user identity claims.
 
 This is a public portfolio project created to demonstrate modern Java backend
 engineering, identity security, system design, React integration, Docker,
@@ -228,7 +228,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`, select **Sign in with International IAM**, and
+Open `http://localhost:5173`, select **Sign in with IdentityForge**, and
 log in with:
 
 ```text
@@ -250,9 +250,9 @@ The `dev` profile creates local-only data for the main portfolio demo:
 | --- | --- |
 | Tenant | `Development Tenant` |
 | Admin user | `admin` / `admin123456` |
-| Public Admin Console client | `iam-admin-console` |
-| Demo OAuth2 client | `International IAM Dev Client` |
-| Demo OAuth2 client ID / secret | `international-iam-dev` / `secret` |
+| Public Admin Console client | `identityforge-console` |
+| Demo OAuth2 client | `IdentityForge Dev Client` |
+| Demo OAuth2 client ID / secret | `identityforge-dev` / `secret` |
 | Application / Resource Server | `Payroll API` |
 | Application permissions | `payroll.employee.read`, `payroll.salary.read`, `payroll.salary.write` |
 
@@ -282,10 +282,10 @@ This walkthrough demonstrates that an access token containing
 
 4. Open `http://localhost:5173` and log in as `admin` / `admin123456`.
 5. Open **Applications** and verify that **Payroll API** exists.
-6. Open **OAuth2 Clients** and verify that **International IAM Dev Client** is
+6. Open **OAuth2 Clients** and verify that **IdentityForge Dev Client** is
    linked to **Payroll API**.
 7. Open **OAuth2 Demo**.
-8. Select **International IAM Dev Client**.
+8. Select **IdentityForge Dev Client**.
 9. Select OIDC scopes such as `openid profile email groups roles`, then select
    `payroll.employee.read` separately.
 10. Generate the authorization URL.
@@ -365,7 +365,7 @@ For code review and interview discussion, the repository demonstrates:
 - Admin APIs under `/api/**` require OAuth2 JWT scopes and backend Admin RBAC.
   Scopes are necessary but not sufficient for administrative access.
 - SCIM-style APIs under `/scim/v2/**` are scope-protected.
-- The React Admin Console uses the persisted public `iam-admin-console` client
+- The React Admin Console uses the persisted public `identityforge-console` client
   with Authorization Code + PKCE.
 - Browser login, MFA challenge, and consent are backend-owned at `/login`,
   `/login/mfa`, and `/oauth2/consent`.

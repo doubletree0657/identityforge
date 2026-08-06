@@ -34,7 +34,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest(properties = "spring.application.name=international-iam-platform")
+@SpringBootTest(properties = "spring.application.name=identityforge")
 @AutoConfigureMockMvc
 @Testcontainers
 class AuthorizationServerConfigurationTests {
@@ -76,16 +76,16 @@ class AuthorizationServerConfigurationTests {
 
     @BeforeEach
     void seedDevelopmentClient() {
-        if (!clientRepository.findAllByClientId("international-iam-dev").isEmpty()) {
+        if (!clientRepository.findAllByClientId("identityforge-dev").isEmpty()) {
             return;
         }
 
         Tenant tenant = tenantRepository.save(Tenant.create("Authorization Server Test Tenant"));
-        Client client = Client.create(tenant, "international-iam-dev", "International IAM Dev");
+        Client client = Client.create(tenant, "identityforge-dev", "IdentityForge Dev");
         client.setClientSecretHash(passwordEncoder.encode("secret"));
         client.setRequirePkce(false);
         client.setRequireConsent(false);
-        client.setRedirectUris(Set.of("http://127.0.0.1:8080/login/oauth2/code/international-iam-dev"));
+        client.setRedirectUris(Set.of("http://127.0.0.1:8080/login/oauth2/code/identityforge-dev"));
         client.setGrantTypes(Set.of("client_credentials", "authorization_code"));
         client.setScopes(Set.of("iam.read", "iam.write"));
         client.setAuthenticationMethods(Set.of("client_secret_basic"));
@@ -94,10 +94,10 @@ class AuthorizationServerConfigurationTests {
 
     @Test
     void contextStartsWithAuthorizationServerConfiguration() {
-        RegisteredClient registeredClient = registeredClientRepository.findByClientId("international-iam-dev");
+        RegisteredClient registeredClient = registeredClientRepository.findByClientId("identityforge-dev");
 
         assertThat(registeredClient).isNotNull();
-        assertThat(registeredClient.getClientId()).isEqualTo("international-iam-dev");
+        assertThat(registeredClient.getClientId()).isEqualTo("identityforge-dev");
         assertThat(authorizationServerSettings).isNotNull();
         assertThat(jwkSource).isNotNull();
         assertThat(jwtDecoder).isNotNull();
@@ -106,7 +106,7 @@ class AuthorizationServerConfigurationTests {
     @Test
     void clientCredentialsTokenRequestReturnsAccessToken() throws Exception {
         mockMvc.perform(post("/oauth2/token")
-                        .with(httpBasic("international-iam-dev", "secret"))
+                        .with(httpBasic("identityforge-dev", "secret"))
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                         .param("grant_type", "client_credentials")
                         .param("scope", "iam.read"))
@@ -127,7 +127,7 @@ class AuthorizationServerConfigurationTests {
     void openApiDocsEndpointIsPublic() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.info.title").value("International IAM Platform API"))
+                .andExpect(jsonPath("$.info.title").value("IdentityForge API"))
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type").value("http"));
     }
 

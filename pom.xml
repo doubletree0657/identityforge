@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>io.github.doubletree.iam</groupId>
-    <artifactId>international-iam-platform</artifactId>
+    <artifactId>identityforge</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>international-iam-platform</name>
-    <description>international-iam-platform</description>
+    <name>IdentityForge</name>
+    <description>IdentityForge is a portfolio-grade Identity and Access Management platform.</description>
     <url/>
     <licenses>
         <license/>

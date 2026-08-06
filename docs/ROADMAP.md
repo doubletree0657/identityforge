@@ -2,13 +2,13 @@
 
 ## Current Milestone Summary
 
-International IAM Platform has reached a **portfolio-grade IAM and OAuth2
-Authorization Server prototype** milestone. The repository now demonstrates a
-working Admin Console, tenant-aware identity administration, backend-enforced
-RBAC, OAuth2 Authorization Code + PKCE, tenant-owned application scopes, token
-lifecycle foundations, consent management, audit logging, and a complete local
-scope-protected resource API demo. OIDC ID Token and UserInfo identity claims
-are also implemented with explicit privacy boundaries.
+IdentityForge is a portfolio-grade Identity and Access Management platform.
+The current milestone demonstrates a working Admin Console, tenant-aware
+identity administration, backend-enforced RBAC, OAuth2 Authorization Code +
+PKCE, tenant-owned application scopes, token lifecycle foundations, consent
+management, audit logging, and a complete local scope-protected resource API
+demo. OIDC ID Token and UserInfo identity claims are also implemented with
+explicit privacy boundaries.
 
 The next phase is not to claim production readiness. It is to improve portfolio
 presentation, complete selected identity protocol foundations, and harden the

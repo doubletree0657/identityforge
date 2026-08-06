@@ -1,8 +1,8 @@
 spring:
   application:
-    name: international-iam-platform
+    name: identityforge
   datasource:
-    url: jdbc:postgresql://localhost:5432/international_iam
+    url: jdbc:postgresql://localhost:5432/identityforge
     username: admin
     password: admin
     driver-class-name: org.postgresql.Driver
