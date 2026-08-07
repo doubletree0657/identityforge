@@ -24,6 +24,17 @@ more depth.
   server, application permission, consent, and audit event models.
 - PostgreSQL persistence with a clean pre-release Flyway V1 schema.
 - JPA repositories and Testcontainers-backed persistence/integration tests.
+- Database-enforced same-tenant joins, normalized tenant-local usernames,
+  global OAuth client IDs, and optimistic versions on administered aggregates.
+
+### Modular Architecture Foundation
+
+- Capability-oriented modular monolith with explicit Spring Modulith
+  dependencies and cycle verification.
+- Shared actor context keeps application authorization independent of direct
+  HTTP security-context access.
+- Audit, directory/access, authentication, applications, OAuth, provisioning,
+  and bootstrap ownership made visible in the source tree.
 
 ### Admin API and Admin Console
 
@@ -34,9 +45,12 @@ more depth.
 
 ### Authentication and Password Management
 
-- Local username/password authentication with account status enforcement.
+- Realm-qualified username/password authentication with account, tenant, and
+  password-reset state enforcement.
 - Password credential management separated from the core user record.
 - Backend-owned login and authentication flow pages.
+- Security-version validation invalidates stale user access tokens after
+  security-relevant mutations.
 
 ### OAuth2 Authorization Code + PKCE
 
@@ -49,6 +63,8 @@ more depth.
 
 - TOTP enrollment, verification, disable, and login challenge behavior.
 - Encrypted TOTP secret storage and one-time setup secret exposure.
+- Self-enrollment boundaries, attempt throttling, and time-step replay
+  prevention.
 
 ### Tenant-Aware RBAC and Effective Permissions
 
@@ -57,10 +73,13 @@ more depth.
 - De-duplicated effective roles and effective permissions.
 - Tenant-boundary checks for user, group, and role relationships.
 
-### Global System IAM Permission Catalog
+### Platform and Tenant Authorization Boundaries
 
 - Backend-seeded system IAM permissions shared across tenants.
-- Tenant role templates for `platform-admin`, `tenant-admin`, and `auditor`.
+- Tenant role templates for `tenant-admin` and `auditor`.
+- Platform operator authority stored outside tenant-managed roles.
+- Delegation checks prevent actors from assigning permissions they do not hold
+  and protect system-managed role templates.
 - Reserved IAM permission handling and metadata for Admin Console display.
 
 ### Fine-Grained Admin API Authorization
@@ -106,12 +125,15 @@ more depth.
 - Audit events across identity administration, authentication, MFA, OAuth2
   consent, and token lifecycle workflows.
 - Tenant-aware audit queries and Admin Console review.
+- Actor type and ID, request source, correlation ID, outcome, and non-sensitive
+  reason/detail fields in the audit model.
 
 ### CI/CD and Local Docker Environment
 
-- Docker Compose services for PostgreSQL and Redis.
+- Docker Compose service for PostgreSQL; unused Redis infrastructure removed.
 - Dockerfile and GitLab CI stages for testing, packaging, and image build.
-- Maven Wrapper, frontend build verification, and Testcontainers integration.
+- Maven Wrapper, backend and frontend CI build verification, module tests, and
+  Testcontainers integration.
 
 ## Current Limitations
 
@@ -125,7 +147,7 @@ more depth.
   work.
 - SCIM-style provisioning needs broader protocol and workflow polish.
 - The frontend is functional but is not a fully polished enterprise console.
-- Production secrets, signing keys, session management, rate limiting,
+- Managed signing-key rotation, session management, rate limiting,
   observability, high availability, and operational hardening remain future
   work.
 
@@ -194,7 +216,8 @@ more depth.
 
 ### Production Key Management
 
-- Integrate managed signing keys, rotation, and secure secret storage.
+- Integrate managed signing keys, previous-key verification during rotation,
+  and secure secret storage using the existing key-provider boundary.
 - Define environment-specific key and credential practices.
 
 ### Multi-Environment Deployment

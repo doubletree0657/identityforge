@@ -1,5 +1,19 @@
 package io.github.doubletree.iam.web;
 
+import io.github.doubletree.iam.applications.web.ClientController;
+import io.github.doubletree.iam.applications.web.ResourceServerController;
+import io.github.doubletree.iam.audit.web.AuditLogController;
+import io.github.doubletree.iam.authentication.web.MfaController;
+import io.github.doubletree.iam.directory.web.GroupController;
+import io.github.doubletree.iam.directory.web.PermissionController;
+import io.github.doubletree.iam.directory.web.RoleController;
+import io.github.doubletree.iam.directory.web.TenantController;
+import io.github.doubletree.iam.directory.web.UserController;
+import io.github.doubletree.iam.oauth.web.CurrentUserController;
+import io.github.doubletree.iam.oauth.web.DemoResourceApiController;
+import io.github.doubletree.iam.provisioning.web.ScimController;
+import io.github.doubletree.iam.shared.web.RestExceptionHandler;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -15,46 +29,48 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.hamcrest.Matchers.containsString;
 
-import io.github.doubletree.iam.application.exception.ClientValidationException;
-import io.github.doubletree.iam.application.exception.PasswordValidationException;
-import io.github.doubletree.iam.application.exception.ValidationException;
-import io.github.doubletree.iam.application.result.ClientSecretResult;
-import io.github.doubletree.iam.application.result.MfaEnrollmentResult;
-import io.github.doubletree.iam.authorization.AuthorizationServerConfiguration;
-import io.github.doubletree.iam.application.service.AuditApplicationService;
-import io.github.doubletree.iam.application.service.ClientApplicationService;
-import io.github.doubletree.iam.application.exception.EntityNotFoundException;
-import io.github.doubletree.iam.application.service.GroupApplicationService;
-import io.github.doubletree.iam.application.service.MfaApplicationService;
-import io.github.doubletree.iam.application.service.PermissionApplicationService;
-import io.github.doubletree.iam.application.service.ResourceServerApplicationService;
-import io.github.doubletree.iam.application.service.RoleApplicationService;
-import io.github.doubletree.iam.application.service.TenantApplicationService;
-import io.github.doubletree.iam.application.exception.TenantBoundaryViolationException;
-import io.github.doubletree.iam.application.service.UserApplicationService;
-import io.github.doubletree.iam.domain.AuditActorType;
-import io.github.doubletree.iam.domain.AuditLog;
-import io.github.doubletree.iam.domain.AuditResult;
-import io.github.doubletree.iam.domain.AccountStatus;
-import io.github.doubletree.iam.domain.Client;
-import io.github.doubletree.iam.domain.ClientStatus;
-import io.github.doubletree.iam.domain.ClientType;
-import io.github.doubletree.iam.domain.Group;
-import io.github.doubletree.iam.domain.PasswordCredential;
-import io.github.doubletree.iam.domain.Permission;
-import io.github.doubletree.iam.domain.ResourcePermission;
-import io.github.doubletree.iam.domain.ResourceServer;
-import io.github.doubletree.iam.domain.ResourceServerStatus;
-import io.github.doubletree.iam.domain.Role;
-import io.github.doubletree.iam.domain.Tenant;
-import io.github.doubletree.iam.domain.TenantStatus;
-import io.github.doubletree.iam.domain.User;
-import io.github.doubletree.iam.domain.UserAttribute;
-import io.github.doubletree.iam.domain.UserAttributeValueType;
-import io.github.doubletree.iam.domain.UserProfile;
-import io.github.doubletree.iam.security.PasswordEncodingConfiguration;
-import io.github.doubletree.iam.security.authentication.MfaAuthenticationSuccessHandler;
-import io.github.doubletree.iam.security.authentication.PlatformUserDetails;
+import io.github.doubletree.iam.shared.exception.ClientValidationException;
+import io.github.doubletree.iam.shared.exception.PasswordValidationException;
+import io.github.doubletree.iam.shared.exception.ValidationException;
+import io.github.doubletree.iam.applications.api.ClientSecretResult;
+import io.github.doubletree.iam.authentication.api.MfaEnrollmentResult;
+import io.github.doubletree.iam.oauth.infrastructure.AuthorizationServerConfiguration;
+import io.github.doubletree.iam.oauth.infrastructure.FileSigningKeyProvider;
+import io.github.doubletree.iam.authentication.application.UserSecurityStateService;
+import io.github.doubletree.iam.audit.application.AuditApplicationService;
+import io.github.doubletree.iam.applications.application.ClientApplicationService;
+import io.github.doubletree.iam.shared.exception.EntityNotFoundException;
+import io.github.doubletree.iam.directory.application.GroupApplicationService;
+import io.github.doubletree.iam.authentication.application.MfaApplicationService;
+import io.github.doubletree.iam.directory.application.PermissionApplicationService;
+import io.github.doubletree.iam.applications.application.ResourceServerApplicationService;
+import io.github.doubletree.iam.directory.application.RoleApplicationService;
+import io.github.doubletree.iam.directory.application.TenantApplicationService;
+import io.github.doubletree.iam.shared.exception.TenantBoundaryViolationException;
+import io.github.doubletree.iam.directory.application.UserApplicationService;
+import io.github.doubletree.iam.audit.domain.AuditActorType;
+import io.github.doubletree.iam.audit.domain.AuditLog;
+import io.github.doubletree.iam.audit.domain.AuditResult;
+import io.github.doubletree.iam.directory.domain.AccountStatus;
+import io.github.doubletree.iam.applications.domain.Client;
+import io.github.doubletree.iam.applications.domain.ClientStatus;
+import io.github.doubletree.iam.applications.domain.ClientType;
+import io.github.doubletree.iam.directory.domain.Group;
+import io.github.doubletree.iam.directory.domain.PasswordCredential;
+import io.github.doubletree.iam.directory.domain.Permission;
+import io.github.doubletree.iam.applications.domain.ResourcePermission;
+import io.github.doubletree.iam.applications.domain.ResourceServer;
+import io.github.doubletree.iam.applications.domain.ResourceServerStatus;
+import io.github.doubletree.iam.directory.domain.Role;
+import io.github.doubletree.iam.directory.domain.Tenant;
+import io.github.doubletree.iam.directory.domain.TenantStatus;
+import io.github.doubletree.iam.directory.domain.User;
+import io.github.doubletree.iam.directory.domain.UserAttribute;
+import io.github.doubletree.iam.directory.domain.UserAttributeValueType;
+import io.github.doubletree.iam.directory.domain.UserProfile;
+import io.github.doubletree.iam.authentication.infrastructure.PasswordEncodingConfiguration;
+import io.github.doubletree.iam.authentication.infrastructure.MfaAuthenticationSuccessHandler;
+import io.github.doubletree.iam.authentication.infrastructure.PlatformUserDetails;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -88,7 +104,11 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
         DemoResourceApiController.class,
         RestExceptionHandler.class
 })
-@Import({AuthorizationServerConfiguration.class, PasswordEncodingConfiguration.class})
+@Import({
+        AuthorizationServerConfiguration.class,
+        FileSigningKeyProvider.class,
+        PasswordEncodingConfiguration.class
+})
 class CoreIamControllerTests {
 
     private static final UUID TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -139,11 +159,15 @@ class CoreIamControllerTests {
     @MockitoBean
     private MfaAuthenticationSuccessHandler mfaAuthenticationSuccessHandler;
 
+    @MockitoBean
+    private UserSecurityStateService userSecurityStateService;
+
     private final RequestPostProcessor writeScopeJwt = jwt()
             .jwt(token -> token
                     .claim("tenant_id", TENANT_ID.toString())
                     .claim("effective_roles", List.of("platform-admin"))
                     .claim("effective_permissions", List.of("iam.admin"))
+                    .claim("aud", List.of("identityforge-admin-api"))
                     .claim("scope", "iam.read iam.write"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.write"));
 
@@ -152,6 +176,7 @@ class CoreIamControllerTests {
                     .claim("tenant_id", TENANT_ID.toString())
                     .claim("effective_roles", List.of("platform-admin"))
                     .claim("effective_permissions", List.of("iam.admin"))
+                    .claim("aud", List.of("identityforge-admin-api"))
                     .claim("scope", "iam.read"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
 
@@ -160,6 +185,7 @@ class CoreIamControllerTests {
                     .claim("tenant_id", TENANT_ID.toString())
                     .claim("effective_roles", List.of())
                     .claim("effective_permissions", List.of("iam.users.read"))
+                    .claim("aud", List.of("identityforge-admin-api"))
                     .claim("scope", "iam.read"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
 
@@ -168,19 +194,20 @@ class CoreIamControllerTests {
                     .claim("tenant_id", TENANT_ID.toString())
                     .claim("effective_roles", List.of())
                     .claim("effective_permissions", List.of("iam.fake.admin"))
+                    .claim("aud", List.of("identityforge-admin-api"))
                     .claim("scope", "iam.read"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
 
     private final RequestPostProcessor employeeReadScopeJwt = jwt()
-            .jwt(token -> token.claim("scope", "payroll.employee.read"))
+            .jwt(token -> token.claim("scope", "payroll.employee.read").claim("aud", List.of("payroll-api")))
             .authorities(new SimpleGrantedAuthority("SCOPE_payroll.employee.read"));
 
     private final RequestPostProcessor salaryReadScopeJwt = jwt()
-            .jwt(token -> token.claim("scope", "payroll.salary.read"))
+            .jwt(token -> token.claim("scope", "payroll.salary.read").claim("aud", List.of("payroll-api")))
             .authorities(new SimpleGrantedAuthority("SCOPE_payroll.salary.read"));
 
     private final RequestPostProcessor salaryWriteScopeJwt = jwt()
-            .jwt(token -> token.claim("scope", "payroll.salary.write"))
+            .jwt(token -> token.claim("scope", "payroll.salary.write").claim("aud", List.of("payroll-api")))
             .authorities(new SimpleGrantedAuthority("SCOPE_payroll.salary.write"));
 
     private RequestPostProcessor adminJwt(Set<String> roles, Set<String> permissions, String scope) {
@@ -189,6 +216,18 @@ class CoreIamControllerTests {
                         .claim("tenant_id", TENANT_ID.toString())
                         .claim("effective_roles", roles)
                         .claim("effective_permissions", permissions)
+                        .claim("aud", List.of("identityforge-admin-api"))
+                        .claim("scope", scope))
+                .authorities(new SimpleGrantedAuthority("SCOPE_" + scope.split(" ")[0]));
+    }
+
+    private RequestPostProcessor platformOperatorJwt(String scope) {
+        return jwt()
+                .jwt(token -> token
+                        .claim("tenant_id", TENANT_ID.toString())
+                        .claim("platform_operator", true)
+                        .claim("effective_permissions", List.of())
+                        .claim("aud", List.of("identityforge-admin-api"))
                         .claim("scope", scope))
                 .authorities(new SimpleGrantedAuthority("SCOPE_" + scope.split(" ")[0]));
     }
@@ -262,10 +301,12 @@ class CoreIamControllerTests {
     void currentUserReturnsSafePrincipalInformation() throws Exception {
         mockMvc.perform(get("/api/me")
                         .with(jwt().jwt(token -> token
-                                        .subject("admin")
+                                        .subject(USER_ID.toString())
                                         .claim("user_id", USER_ID.toString())
                                         .claim("tenant_id", TENANT_ID.toString())
+                                        .claim("preferred_username", "admin")
                                         .claim("display_name", "Development Super Admin")
+                                        .claim("platform_operator", true)
                                         .claim("roles", List.of("platform-admin"))
                                         .claim("direct_roles", List.of("platform-admin"))
                                         .claim("group_roles", List.of())
@@ -274,7 +315,7 @@ class CoreIamControllerTests {
                                         .claim("scope", "iam.read iam.write"))
                                 .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.subject").value("admin"))
+                .andExpect(jsonPath("$.subject").value(USER_ID.toString()))
                 .andExpect(jsonPath("$.username").value("admin"))
                 .andExpect(jsonPath("$.userId").value(USER_ID.toString()))
                 .andExpect(jsonPath("$.tenantId").value(TENANT_ID.toString()))
@@ -310,14 +351,14 @@ class CoreIamControllerTests {
 
     @Test
     void createsTenant() throws Exception {
-        when(tenantApplicationService.createTenant(eq("Acme")))
+        when(tenantApplicationService.createTenant(eq("Acme"), eq("acme")))
                 .thenReturn(tenant("Acme"));
 
         mockMvc.perform(post("/api/tenants")
                         .with(writeScopeJwt)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"Acme"}
+                                {"name":"Acme","slug":"acme"}
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(TENANT_ID.toString()))
@@ -381,14 +422,14 @@ class CoreIamControllerTests {
 
     @Test
     void duplicateTenantSlugReturnsValidationError() throws Exception {
-        when(tenantApplicationService.createTenant(eq("Acme")))
+        when(tenantApplicationService.createTenant(eq("Acme"), eq("acme")))
                 .thenThrow(new ValidationException("Tenant slug already exists: acme"));
 
         mockMvc.perform(post("/api/tenants")
                         .with(writeScopeJwt)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"Acme"}
+                                {"name":"Acme","slug":"acme"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("validation_error"))
@@ -452,7 +493,7 @@ class CoreIamControllerTests {
         when(userApplicationService.createUser(eq(TENANT_ID), eq("platform-writer"), eq("Platform Writer")))
                 .thenReturn(user("platform-writer", "Platform Writer"));
 
-        RequestPostProcessor platformAdmin = adminJwt(Set.of("platform-admin"), Set.of(), "iam.read iam.write");
+        RequestPostProcessor platformAdmin = platformOperatorJwt("iam.read iam.write");
 
         mockMvc.perform(get("/api/users")
                         .queryParam("tenantId", TENANT_ID.toString())
@@ -645,7 +686,7 @@ class CoreIamControllerTests {
                 .thenReturn(resourceServer);
 
         mockMvc.perform(post("/api/resource-servers/{resourceServerId}/disable", RESOURCE_SERVER_ID)
-                        .with(adminJwt(Set.of("platform-admin"), Set.of(), "iam.write")))
+                        .with(platformOperatorJwt("iam.write")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("DISABLED"));
     }
@@ -1334,12 +1375,11 @@ class CoreIamControllerTests {
         when(userApplicationService.createUser(eq(TENANT_ID), eq("scim-user"), eq("SCIM User")))
                 .thenReturn(user("scim-user", "SCIM User"));
 
-        mockMvc.perform(post("/scim/v2/Users")
+        mockMvc.perform(post("/scim/v2/{tenantId}/Users", TENANT_ID)
                         .with(writeScopeJwt)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "tenantId":"00000000-0000-0000-0000-000000000001",
                                   "userName":"scim-user",
                                   "displayName":"SCIM User"
                                 }
@@ -1356,10 +1396,10 @@ class CoreIamControllerTests {
     @Test
     void readsScimUser() throws Exception {
         User user = user("read-scim-user", "Read SCIM User");
-        when(userApplicationService.findUser(eq(USER_ID)))
+        when(userApplicationService.findUser(eq(TENANT_ID), eq(USER_ID)))
                 .thenReturn(user);
 
-        mockMvc.perform(get("/scim/v2/Users/{id}", USER_ID)
+        mockMvc.perform(get("/scim/v2/{tenantId}/Users/{id}", TENANT_ID, USER_ID)
                         .with(readScopeJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(USER_ID.toString()))
@@ -1371,17 +1411,15 @@ class CoreIamControllerTests {
     void createsScimGroup() throws Exception {
         Group group = group("engineering");
         group.addUser(user("scim-member", "SCIM Member"));
-        when(groupApplicationService.createGroup(eq(TENANT_ID), eq("engineering")))
-                .thenReturn(group("engineering"));
-        when(groupApplicationService.addUserToGroup(eq(GROUP_ID), eq(USER_ID)))
+        when(groupApplicationService.createGroupWithMembers(
+                        eq(TENANT_ID), eq("engineering"), eq(List.of(USER_ID))))
                 .thenReturn(group);
 
-        mockMvc.perform(post("/scim/v2/Groups")
+        mockMvc.perform(post("/scim/v2/{tenantId}/Groups", TENANT_ID)
                         .with(writeScopeJwt)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "tenantId":"00000000-0000-0000-0000-000000000001",
                                   "displayName":"engineering",
                                   "members":["00000000-0000-0000-0000-000000000002"]
                                 }
@@ -1397,10 +1435,10 @@ class CoreIamControllerTests {
     void readsScimGroup() throws Exception {
         Group group = group("readers");
         group.addUser(user("reader", "Reader User"));
-        when(groupApplicationService.findGroup(eq(GROUP_ID)))
+        when(groupApplicationService.findGroup(eq(TENANT_ID), eq(GROUP_ID)))
                 .thenReturn(group);
 
-        mockMvc.perform(get("/scim/v2/Groups/{id}", GROUP_ID)
+        mockMvc.perform(get("/scim/v2/{tenantId}/Groups/{id}", TENANT_ID, GROUP_ID)
                         .with(readScopeJwt))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(GROUP_ID.toString()))
@@ -1412,7 +1450,8 @@ class CoreIamControllerTests {
     void managesGroupsAndMembers() throws Exception {
         Group group = group("engineering");
         group.addUser(user("member", "Member User"));
-        when(groupApplicationService.createGroup(eq(TENANT_ID), eq("engineering")))
+        when(groupApplicationService.createGroup(
+                        eq(TENANT_ID), eq("engineering"), eq("Engineering"), eq("Platform team")))
                 .thenReturn(group("engineering"));
         when(groupApplicationService.updateGroup(eq(GROUP_ID), any(), eq("Engineering"), eq("Platform team")))
                 .thenReturn(group("engineering"));
@@ -1498,11 +1537,10 @@ class CoreIamControllerTests {
 
     @Test
     void unauthorizedScimRequestIsRejected() throws Exception {
-        mockMvc.perform(post("/scim/v2/Users")
+        mockMvc.perform(post("/scim/v2/{tenantId}/Users", TENANT_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "tenantId":"00000000-0000-0000-0000-000000000001",
                                   "userName":"scim-user",
                                   "displayName":"SCIM User"
                                 }

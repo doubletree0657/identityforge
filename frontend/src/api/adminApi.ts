@@ -33,7 +33,7 @@ export const adminApi = {
   tenants: {
     list: (params?: QueryParams) => apiRequest<PageResponse<TenantResponse>>('GET', '/api/tenants', undefined, cleanParams(params)),
     get: (id: string) => apiRequest<TenantResponse>('GET', `/api/tenants/${id}`),
-    create: (body: { name: string }) => apiRequest<TenantResponse>('POST', '/api/tenants', body),
+    create: (body: { name: string; slug: string }) => apiRequest<TenantResponse>('POST', '/api/tenants', body),
     update: (id: string, body: { name?: string; slug?: string; status?: TenantStatus }) =>
       apiRequest<TenantResponse>('PUT', `/api/tenants/${id}`, body),
   },

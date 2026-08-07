@@ -39,7 +39,10 @@ export function TenantsPage() {
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    createTenant.mutate({ name: String(form.get('name') ?? '') });
+    createTenant.mutate({
+      name: String(form.get('name') ?? ''),
+      slug: String(form.get('slug') ?? ''),
+    });
     event.currentTarget.reset();
   }
 
@@ -50,7 +53,6 @@ export function TenantsPage() {
       id: tenant.id,
       body: compact({
         name: String(form.get('name') ?? ''),
-        slug: String(form.get('slug') ?? ''),
         status: String(form.get('status') ?? tenant.status) as TenantStatus,
       }),
     });
@@ -64,6 +66,9 @@ export function TenantsPage() {
           <form onSubmit={create} className="grid gap-3">
             <Field label="Name">
               <Input name="name" required maxLength={120} />
+            </Field>
+            <Field label="Realm slug">
+              <Input name="slug" placeholder="acme-corp" required maxLength={63} />
             </Field>
             <Button type="submit" icon={<Save className="h-4 w-4" />} disabled={createTenant.isPending}>
               Create
@@ -88,7 +93,7 @@ export function TenantsPage() {
                     render: (tenant) => (
                       <form onSubmit={(event) => update(event, tenant)} className="grid min-w-[320px] gap-2">
                         <Input name="name" defaultValue={tenant.name} aria-label="Tenant name" />
-                        <Input name="slug" defaultValue={tenant.slug} aria-label="Tenant slug" />
+                        <Input value={tenant.slug} aria-label="Tenant realm slug" readOnly />
                         <Select name="status" defaultValue={tenant.status} aria-label="Tenant status">
                           <option value="ACTIVE">ACTIVE</option>
                           <option value="SUSPENDED">SUSPENDED</option>

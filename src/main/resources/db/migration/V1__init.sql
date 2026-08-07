@@ -3,9 +3,9 @@ CREATE TABLE tenants (
     name VARCHAR(255) NOT NULL,
     slug VARCHAR(255) NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_tenants_name UNIQUE (name),
     CONSTRAINT uq_tenants_slug UNIQUE (slug)
 );
 
@@ -13,17 +13,27 @@ CREATE TABLE users (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,
     username VARCHAR(255) NOT NULL,
+    normalized_username VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     email VARCHAR(320),
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     phone_number VARCHAR(64),
     phone_number_verified BOOLEAN NOT NULL DEFAULT FALSE,
     account_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_users_tenant_username UNIQUE (tenant_id, username),
+    CONSTRAINT uq_users_tenant_username UNIQUE (tenant_id, normalized_username),
     CONSTRAINT uq_users_tenant_email UNIQUE (tenant_id, email),
     CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+);
+
+CREATE TABLE platform_authorities (
+    user_id UUID PRIMARY KEY,
+    granted_by UUID,
+    granted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_platform_authorities_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_platform_authorities_grantor FOREIGN KEY (granted_by) REFERENCES users (id) ON DELETE SET NULL
 );
 
 CREATE TABLE user_profiles (
@@ -64,6 +74,7 @@ CREATE TABLE totp_credentials (
     secret_ciphertext VARCHAR(1024) NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     verified_at TIMESTAMPTZ,
+    last_used_time_step BIGINT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_totp_credentials_user UNIQUE (user_id),
@@ -89,6 +100,7 @@ CREATE TABLE permissions (
     description TEXT,
     category VARCHAR(64),
     system_managed BOOLEAN NOT NULL DEFAULT FALSE,
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_permissions_name UNIQUE (name)
@@ -104,6 +116,8 @@ CREATE TABLE roles (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,
     name VARCHAR(255) NOT NULL,
+    system_managed BOOLEAN NOT NULL DEFAULT FALSE,
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_roles_tenant_name UNIQUE (tenant_id, name),
@@ -133,6 +147,7 @@ CREATE TABLE resource_servers (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_resource_servers_tenant_identifier UNIQUE (tenant_id, identifier),
@@ -145,6 +160,7 @@ CREATE TABLE resource_permissions (
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
     description TEXT,
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_resource_permissions_server_name UNIQUE (resource_server_id, name),
@@ -157,6 +173,7 @@ CREATE TABLE groups (
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     description TEXT,
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_groups_tenant_name UNIQUE (tenant_id, name),
@@ -192,9 +209,10 @@ CREATE TABLE clients (
     status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
     require_pkce BOOLEAN NOT NULL DEFAULT TRUE,
     require_consent BOOLEAN NOT NULL DEFAULT TRUE,
+    version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_clients_tenant_client_id UNIQUE (tenant_id, client_id),
+    CONSTRAINT uq_clients_client_id UNIQUE (client_id),
     CONSTRAINT fk_clients_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id),
     CONSTRAINT fk_clients_resource_server FOREIGN KEY (resource_server_id) REFERENCES resource_servers (id)
 );
@@ -290,10 +308,98 @@ CREATE TABLE audit_logs (
     result VARCHAR(32) NOT NULL DEFAULT 'SUCCESS',
     ip_address VARCHAR(128),
     user_agent VARCHAR(1024),
+    source VARCHAR(64),
+    correlation_id VARCHAR(128),
+    reason_code VARCHAR(128),
+    details TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE FUNCTION enforce_user_role_tenant() RETURNS TRIGGER AS $$
+BEGIN
+    IF (SELECT tenant_id FROM users WHERE id = NEW.user_id)
+            IS DISTINCT FROM (SELECT tenant_id FROM roles WHERE id = NEW.role_id) THEN
+        RAISE EXCEPTION 'user and role must belong to the same tenant' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_user_roles_same_tenant
+    BEFORE INSERT OR UPDATE ON user_roles
+    FOR EACH ROW EXECUTE FUNCTION enforce_user_role_tenant();
+
+CREATE FUNCTION enforce_group_membership_tenant() RETURNS TRIGGER AS $$
+BEGIN
+    IF (SELECT tenant_id FROM groups WHERE id = NEW.group_id)
+            IS DISTINCT FROM (SELECT tenant_id FROM users WHERE id = NEW.user_id) THEN
+        RAISE EXCEPTION 'group and user must belong to the same tenant' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_group_memberships_same_tenant
+    BEFORE INSERT OR UPDATE ON group_memberships
+    FOR EACH ROW EXECUTE FUNCTION enforce_group_membership_tenant();
+
+CREATE FUNCTION enforce_group_role_tenant() RETURNS TRIGGER AS $$
+BEGIN
+    IF (SELECT tenant_id FROM groups WHERE id = NEW.group_id)
+            IS DISTINCT FROM (SELECT tenant_id FROM roles WHERE id = NEW.role_id) THEN
+        RAISE EXCEPTION 'group and role must belong to the same tenant' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_group_roles_same_tenant
+    BEFORE INSERT OR UPDATE ON group_roles
+    FOR EACH ROW EXECUTE FUNCTION enforce_group_role_tenant();
+
+CREATE FUNCTION enforce_client_resource_tenant() RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.resource_server_id IS NOT NULL AND
+            NEW.tenant_id IS DISTINCT FROM
+                    (SELECT tenant_id FROM resource_servers WHERE id = NEW.resource_server_id) THEN
+        RAISE EXCEPTION 'client and resource server must belong to the same tenant' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_clients_same_tenant
+    BEFORE INSERT OR UPDATE ON clients
+    FOR EACH ROW EXECUTE FUNCTION enforce_client_resource_tenant();
+
+CREATE FUNCTION enforce_client_permission_tenant() RETURNS TRIGGER AS $$
+DECLARE
+    client_tenant UUID;
+    permission_tenant UUID;
+    client_resource UUID;
+    permission_resource UUID;
+BEGIN
+    SELECT tenant_id, resource_server_id INTO client_tenant, client_resource
+        FROM clients WHERE id = NEW.client_id;
+    SELECT rs.tenant_id, rp.resource_server_id INTO permission_tenant, permission_resource
+        FROM resource_permissions rp
+        JOIN resource_servers rs ON rs.id = rp.resource_server_id
+        WHERE rp.id = NEW.resource_permission_id;
+    IF client_tenant IS DISTINCT FROM permission_tenant
+            OR client_resource IS DISTINCT FROM permission_resource THEN
+        RAISE EXCEPTION 'client permission must belong to the client resource server and tenant'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_client_permissions_same_tenant
+    BEFORE INSERT OR UPDATE ON client_allowed_resource_permissions
+    FOR EACH ROW EXECUTE FUNCTION enforce_client_permission_tenant();
+
 CREATE INDEX idx_users_tenant_account_status ON users (tenant_id, account_status);
+CREATE INDEX idx_users_tenant_normalized_username ON users (tenant_id, normalized_username);
 CREATE INDEX idx_totp_credentials_user_id ON totp_credentials (user_id);
 CREATE INDEX idx_roles_tenant_id ON roles (tenant_id);
 CREATE INDEX idx_user_roles_role_id ON user_roles (role_id);

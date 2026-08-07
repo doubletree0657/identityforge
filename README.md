@@ -45,8 +45,8 @@ The main local demo proves a complete application-scope flow:
 
 ### Tenant and Admin Authorization
 
-- Tenant-scoped administration with `platform-admin`, `tenant-admin`, and
-  `auditor` role templates.
+- Platform operator authority stored outside tenant RBAC, with tenant-scoped
+  `tenant-admin` and `auditor` role templates.
 - Backend-enforced Admin RBAC for `/api/**`.
 - Fine-grained Admin API permission checks in addition to OAuth2 scope checks.
 
@@ -63,7 +63,8 @@ The main local demo proves a complete application-scope flow:
 - OAuth2 Authorization Code flow, including PKCE for the public Admin Console
   client.
 - Backend-owned login, optional TOTP challenge, and consent pages.
-- JWT access tokens, JWK support, and scope validation.
+- Audience-bound JWT access tokens, durable development signing keys, and
+  scope validation.
 - OIDC ID Tokens with stable user-ID subjects and safe basic identity claims.
 - OIDC UserInfo endpoint at `/userinfo` with claims filtered by granted scopes.
 
@@ -126,9 +127,10 @@ pairwise subject identifiers and advanced claim mapping remain future work.
 
 ### Engineering Practices
 
-- Java 21, Spring Boot 3.5.x, PostgreSQL, Redis, Flyway, and Docker Compose.
+- Java 21, Spring Boot 3.5.x, PostgreSQL, Flyway, and Docker Compose.
 - Clean pre-release Flyway V1 schema.
-- Testcontainers-backed integration tests.
+- Spring Modulith boundary verification and Testcontainers-backed integration
+  tests.
 - Maven Wrapper, frontend build verification, Docker image build, and GitLab
   CI/CD pipeline.
 - OpenAPI documentation and centralized API validation/error handling.
@@ -145,7 +147,6 @@ flowchart LR
     Model[Application / Resource Server Model]
     Payroll[Demo Payroll Resource API]
     DB[(PostgreSQL)]
-    Redis[(Redis)]
 
     Browser --> Console
     Console -->|Authorization Code + PKCE and Admin API calls| Backend
@@ -154,7 +155,6 @@ flowchart LR
     Backend --> Model
     Backend --> Payroll
     Backend --> DB
-    Backend --> Redis
     Auth -->|JWT access token with application scopes| Console
     Console -->|Scoped API call| Payroll
 ```
@@ -186,6 +186,12 @@ be issued as OAuth2 scopes. They are intentionally separate authorization
 models. OIDC scopes control identity claims and do not grant application or
 Admin API access.
 
+The backend is a capability-oriented modular monolith. Its top-level modules
+own shared infrastructure, directory and access control, authentication,
+applications, OAuth/OIDC, provisioning, audit, and bootstrap behavior. See
+[Architecture Foundation](docs/architecture/README.md) for module ownership
+and the durable decisions behind the current foundation.
+
 ## Quick Start
 
 ### Prerequisites
@@ -203,8 +209,8 @@ From the repository root:
 docker compose up -d
 ```
 
-This starts PostgreSQL on `localhost:5432` and Redis on `localhost:6379`.
-Compose credentials are local development values only.
+This starts PostgreSQL on `localhost:5432`. Compose credentials are local
+development values only.
 
 ### Start the Backend
 
@@ -217,6 +223,12 @@ The backend starts at `http://localhost:8080`.
 ```bash
 curl http://localhost:8080/api/health
 ```
+
+Outside the `dev` profile, startup requires `IAM_DB_URL`, `IAM_DB_USERNAME`,
+`IAM_DB_PASSWORD`, `IAM_ALLOWED_ORIGINS`, `IAM_OAUTH_ISSUER`,
+`IAM_SECRET_ENCRYPTION_KEY`, `IAM_SIGNING_KEY_FILE`, and
+`IAM_ADMIN_CONSOLE_URL`. Set `IAM_COOKIE_SECURE=false` only for an HTTP-only
+local environment; secure cookies are the default.
 
 ### Start the Admin Console
 
@@ -232,7 +244,7 @@ Open `http://localhost:5173`, select **Sign in with IdentityForge**, and
 log in with:
 
 ```text
-username: admin
+username: development/admin
 password: admin123456
 ```
 
@@ -249,7 +261,8 @@ The `dev` profile creates local-only data for the main portfolio demo:
 | Type | Value |
 | --- | --- |
 | Tenant | `Development Tenant` |
-| Admin user | `admin` / `admin123456` |
+| Tenant realm | `development` |
+| Platform operator | `development/admin` / `admin123456` |
 | Public Admin Console client | `identityforge-console` |
 | Demo OAuth2 client | `IdentityForge Dev Client` |
 | Demo OAuth2 client ID / secret | `identityforge-dev` / `secret` |
@@ -280,7 +293,8 @@ This walkthrough demonstrates that an access token containing
    npm run dev
    ```
 
-4. Open `http://localhost:5173` and log in as `admin` / `admin123456`.
+4. Open `http://localhost:5173` and log in as
+   `development/admin` / `admin123456`.
 5. Open **Applications** and verify that **Payroll API** exists.
 6. Open **OAuth2 Clients** and verify that **IdentityForge Dev Client** is
    linked to **Payroll API**.
@@ -364,7 +378,12 @@ For code review and interview discussion, the repository demonstrates:
 - `/api/health` is public.
 - Admin APIs under `/api/**` require OAuth2 JWT scopes and backend Admin RBAC.
   Scopes are necessary but not sufficient for administrative access.
-- SCIM-style APIs under `/scim/v2/**` are scope-protected.
+- SCIM-style APIs under `/scim/v2/{tenantId}/**` require an admin audience,
+  scopes, concrete permissions, and the matching tenant boundary.
+- Interactive login identifiers use `realm/username`; tenant-local duplicate
+  usernames are resolved only through the explicit realm.
+- Tenant roles cannot confer platform authority. Platform operator grants are
+  stored and administered through a separate trust boundary.
 - The React Admin Console uses the persisted public `identityforge-console` client
   with Authorization Code + PKCE.
 - Browser login, MFA challenge, and consent are backend-owned at `/login`,
@@ -393,7 +412,7 @@ platform.
   future work.
 - SCIM provisioning needs broader protocol and workflow polish.
 - The frontend is functional but is not a fully polished enterprise console.
-- Production secrets, signing keys, session management, rate limiting,
+- Managed key rotation, production secret storage, session management, rate limiting,
   observability, high availability, and operational hardening remain future
   work.
 
@@ -424,6 +443,10 @@ Reset local database volumes when a clean development environment is required:
 ./scripts/reset-local-db.sh
 ```
 
+The current pre-release migration policy is a squashed clean `V1` baseline.
+Existing local databases from an older revision must be reset; no retained
+production data migration path is implied.
+
 ## Roadmap
 
 Planning and production-hardening priorities are tracked in
@@ -435,7 +458,8 @@ Planning and production-hardening priorities are tracked in
 - Spring Boot 3.5.x
 - Spring Security and Spring Authorization Server
 - Spring Data JPA and Flyway
-- PostgreSQL and Redis
+- PostgreSQL
+- Spring Modulith
 - React, TypeScript, and Vite
 - Docker Compose
 - Testcontainers

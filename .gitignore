@@ -47,5 +47,8 @@ build/
 frontend/node_modules/
 frontend/dist/
 
+### IdentityForge local security material ###
+.identityforge/
+
 ### Local utility scripts ###
 scripts/git-push.sh

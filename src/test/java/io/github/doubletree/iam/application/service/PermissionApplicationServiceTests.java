@@ -1,16 +1,20 @@
 package io.github.doubletree.iam.application.service;
 
+import io.github.doubletree.iam.audit.application.AuditApplicationService;
+import io.github.doubletree.iam.directory.application.PermissionApplicationService;
+import io.github.doubletree.iam.directory.application.SystemPermissionCatalogService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
-import io.github.doubletree.iam.application.exception.ValidationException;
-import io.github.doubletree.iam.domain.Permission;
-import io.github.doubletree.iam.repository.PermissionRepository;
-import io.github.doubletree.iam.repository.RoleRepository;
-import io.github.doubletree.iam.security.BuiltInPermission;
+import io.github.doubletree.iam.shared.exception.ValidationException;
+import io.github.doubletree.iam.directory.domain.Permission;
+import io.github.doubletree.iam.directory.infrastructure.persistence.PermissionRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.RoleRepository;
+import io.github.doubletree.iam.directory.access.application.BuiltInPermission;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

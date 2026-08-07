@@ -1,48 +1,60 @@
 package io.github.doubletree.iam.application.service;
 
+import io.github.doubletree.iam.applications.application.ClientApplicationService;
+import io.github.doubletree.iam.applications.application.ResourceServerApplicationService;
+import io.github.doubletree.iam.audit.application.AuditApplicationService;
+import io.github.doubletree.iam.authentication.application.MfaApplicationService;
+import io.github.doubletree.iam.directory.application.GroupApplicationService;
+import io.github.doubletree.iam.directory.application.PermissionApplicationService;
+import io.github.doubletree.iam.directory.application.RoleApplicationService;
+import io.github.doubletree.iam.directory.application.SystemPermissionCatalogService;
+import io.github.doubletree.iam.directory.application.TenantApplicationService;
+import io.github.doubletree.iam.directory.application.UserApplicationService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.github.doubletree.iam.application.exception.ClientValidationException;
-import io.github.doubletree.iam.application.exception.PasswordValidationException;
-import io.github.doubletree.iam.application.exception.TenantBoundaryViolationException;
-import io.github.doubletree.iam.application.exception.ValidationException;
-import io.github.doubletree.iam.application.result.ClientSecretResult;
-import io.github.doubletree.iam.application.result.MfaEnrollmentResult;
-import io.github.doubletree.iam.domain.AccountStatus;
-import io.github.doubletree.iam.domain.AuditLog;
-import io.github.doubletree.iam.domain.AuditActorType;
-import io.github.doubletree.iam.domain.Client;
-import io.github.doubletree.iam.domain.ClientStatus;
-import io.github.doubletree.iam.domain.ClientType;
-import io.github.doubletree.iam.domain.Group;
-import io.github.doubletree.iam.domain.PasswordCredential;
-import io.github.doubletree.iam.domain.Permission;
-import io.github.doubletree.iam.domain.ResourcePermission;
-import io.github.doubletree.iam.domain.ResourceServer;
-import io.github.doubletree.iam.domain.ResourceServerStatus;
-import io.github.doubletree.iam.domain.Role;
-import io.github.doubletree.iam.domain.Tenant;
-import io.github.doubletree.iam.domain.TotpCredential;
-import io.github.doubletree.iam.domain.User;
-import io.github.doubletree.iam.domain.UserAttributeValueType;
-import io.github.doubletree.iam.repository.AuditLogRepository;
-import io.github.doubletree.iam.repository.ClientRepository;
-import io.github.doubletree.iam.repository.GroupRepository;
-import io.github.doubletree.iam.repository.PasswordCredentialRepository;
-import io.github.doubletree.iam.repository.PermissionRepository;
-import io.github.doubletree.iam.repository.ResourcePermissionRepository;
-import io.github.doubletree.iam.repository.ResourceServerRepository;
-import io.github.doubletree.iam.repository.RoleRepository;
-import io.github.doubletree.iam.repository.TenantRepository;
-import io.github.doubletree.iam.repository.TotpCredentialRepository;
-import io.github.doubletree.iam.repository.UserRepository;
-import io.github.doubletree.iam.security.PasswordEncodingConfiguration;
-import io.github.doubletree.iam.security.AdminAuthorizationService;
-import io.github.doubletree.iam.security.crypto.SecretEncryptionService;
-import io.github.doubletree.iam.web.dto.ClientResponse;
-import io.github.doubletree.iam.web.dto.ResourcePermissionResponse;
-import io.github.doubletree.iam.web.dto.UserResponse;
+import io.github.doubletree.iam.shared.exception.ClientValidationException;
+import io.github.doubletree.iam.shared.exception.PasswordValidationException;
+import io.github.doubletree.iam.shared.exception.TenantBoundaryViolationException;
+import io.github.doubletree.iam.shared.exception.ValidationException;
+import io.github.doubletree.iam.applications.api.ClientSecretResult;
+import io.github.doubletree.iam.authentication.api.MfaEnrollmentResult;
+import io.github.doubletree.iam.directory.domain.AccountStatus;
+import io.github.doubletree.iam.audit.domain.AuditLog;
+import io.github.doubletree.iam.audit.domain.AuditActorType;
+import io.github.doubletree.iam.applications.domain.Client;
+import io.github.doubletree.iam.applications.domain.ClientStatus;
+import io.github.doubletree.iam.applications.domain.ClientType;
+import io.github.doubletree.iam.directory.domain.Group;
+import io.github.doubletree.iam.directory.domain.PasswordCredential;
+import io.github.doubletree.iam.directory.domain.Permission;
+import io.github.doubletree.iam.applications.domain.ResourcePermission;
+import io.github.doubletree.iam.applications.domain.ResourceServer;
+import io.github.doubletree.iam.applications.domain.ResourceServerStatus;
+import io.github.doubletree.iam.directory.domain.Role;
+import io.github.doubletree.iam.directory.domain.Tenant;
+import io.github.doubletree.iam.directory.domain.TotpCredential;
+import io.github.doubletree.iam.directory.domain.User;
+import io.github.doubletree.iam.directory.domain.UserAttributeValueType;
+import io.github.doubletree.iam.audit.infrastructure.AuditLogRepository;
+import io.github.doubletree.iam.applications.infrastructure.persistence.ClientRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.GroupRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.PasswordCredentialRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.PermissionRepository;
+import io.github.doubletree.iam.applications.infrastructure.persistence.ResourcePermissionRepository;
+import io.github.doubletree.iam.applications.infrastructure.persistence.ResourceServerRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.RoleRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.TenantRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.TotpCredentialRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.UserRepository;
+import io.github.doubletree.iam.authentication.infrastructure.PasswordEncodingConfiguration;
+import io.github.doubletree.iam.directory.access.application.AdminAuthorizationService;
+import io.github.doubletree.iam.authentication.infrastructure.SecurityContextCurrentActor;
+import io.github.doubletree.iam.authentication.infrastructure.crypto.SecretEncryptionService;
+import io.github.doubletree.iam.applications.web.dto.ClientResponse;
+import io.github.doubletree.iam.applications.web.dto.ResourcePermissionResponse;
+import io.github.doubletree.iam.directory.web.dto.UserResponse;
 import java.lang.reflect.RecordComponent;
 import java.time.Instant;
 import java.util.Set;
@@ -81,6 +93,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         ResourceServerApplicationService.class,
         AuditApplicationService.class,
         AdminAuthorizationService.class,
+        SecurityContextCurrentActor.class,
         PasswordEncodingConfiguration.class,
         SecretEncryptionService.class,
         MfaApplicationService.class
@@ -436,18 +449,18 @@ class ApplicationServiceTests {
     }
 
     @Test
-    void passwordResetRequirementCanBeSetAndClearedWithoutChangingCredentialsVersion() {
+    void passwordResetRequirementChangesInvalidateExistingSecurityState() {
         Tenant tenant = tenantApplicationService.createTenant("Password Reset Flag Tenant");
         User user = userApplicationService.createUser(tenant.getId(), "reset-flag-user", "Reset Flag");
         User passwordUser = userApplicationService.setInitialPassword(user.getId(), "reset-flag-password");
 
         User resetRequiredUser = userApplicationService.requirePasswordReset(passwordUser.getId());
         assertThat(resetRequiredUser.getPasswordCredential().isPasswordResetRequired()).isTrue();
-        assertThat(resetRequiredUser.getPasswordCredential().getCredentialsVersion()).isEqualTo(2);
+        assertThat(resetRequiredUser.getPasswordCredential().getCredentialsVersion()).isEqualTo(3);
 
         User clearedUser = userApplicationService.clearPasswordResetRequired(passwordUser.getId());
         assertThat(clearedUser.getPasswordCredential().isPasswordResetRequired()).isFalse();
-        assertThat(clearedUser.getPasswordCredential().getCredentialsVersion()).isEqualTo(2);
+        assertThat(clearedUser.getPasswordCredential().getCredentialsVersion()).isEqualTo(4);
     }
 
     @ParameterizedTest
@@ -1093,7 +1106,7 @@ class ApplicationServiceTests {
 
     @Test
     void updateDoesNotAllowChangingClientType() {
-        assertThat(io.github.doubletree.iam.web.dto.UpdateClientRequest.class.getDeclaredFields())
+        assertThat(io.github.doubletree.iam.applications.web.dto.UpdateClientRequest.class.getDeclaredFields())
                 .extracting(field -> field.getName())
                 .doesNotContain("clientType");
         assertThat(ClientApplicationService.class.getDeclaredMethods())

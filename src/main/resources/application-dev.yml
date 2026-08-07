@@ -7,10 +7,33 @@
 # - OAuth2 public client: identityforge-console
 # - admin user: admin / admin123456
 # These values are for local development only and must not be used in production.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/identityforge
+    username: admin
+    password: admin
+
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false
+
 app:
+  admin-console:
+    frontend-base-url: http://localhost:5173
   bootstrap:
     admin:
       enabled: true
       username: admin
       password: admin123456
       reset-password: false
+
+iam:
+  http:
+    allowed-origins: http://localhost:5173,http://127.0.0.1:5173
+  oauth:
+    issuer: http://localhost:8080
+  security:
+    secret-encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    signing-key-file: .identityforge/dev-signing-key.properties

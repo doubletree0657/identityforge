@@ -2,26 +2,29 @@ package io.github.doubletree.iam.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.github.doubletree.iam.domain.Client;
-import io.github.doubletree.iam.domain.ClientStatus;
-import io.github.doubletree.iam.domain.ClientType;
-import io.github.doubletree.iam.domain.ResourcePermission;
-import io.github.doubletree.iam.domain.ResourceServer;
-import io.github.doubletree.iam.domain.Role;
-import io.github.doubletree.iam.domain.Tenant;
-import io.github.doubletree.iam.domain.User;
-import io.github.doubletree.iam.application.service.AuditApplicationService;
-import io.github.doubletree.iam.application.service.SystemPermissionCatalogService;
-import io.github.doubletree.iam.application.service.UserApplicationService;
-import io.github.doubletree.iam.repository.ClientRepository;
-import io.github.doubletree.iam.repository.PermissionRepository;
-import io.github.doubletree.iam.repository.ResourcePermissionRepository;
-import io.github.doubletree.iam.repository.ResourceServerRepository;
-import io.github.doubletree.iam.repository.RoleRepository;
-import io.github.doubletree.iam.repository.TenantRepository;
-import io.github.doubletree.iam.repository.UserRepository;
-import io.github.doubletree.iam.security.PasswordEncodingConfiguration;
-import io.github.doubletree.iam.security.AdminAuthorizationService;
+import io.github.doubletree.iam.applications.domain.Client;
+import io.github.doubletree.iam.applications.domain.ClientStatus;
+import io.github.doubletree.iam.applications.domain.ClientType;
+import io.github.doubletree.iam.applications.domain.ResourcePermission;
+import io.github.doubletree.iam.applications.domain.ResourceServer;
+import io.github.doubletree.iam.directory.domain.Role;
+import io.github.doubletree.iam.directory.domain.Tenant;
+import io.github.doubletree.iam.directory.domain.User;
+import io.github.doubletree.iam.audit.application.AuditApplicationService;
+import io.github.doubletree.iam.directory.application.SystemPermissionCatalogService;
+import io.github.doubletree.iam.directory.application.UserApplicationService;
+import io.github.doubletree.iam.applications.infrastructure.persistence.ClientRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.PermissionRepository;
+import io.github.doubletree.iam.applications.infrastructure.persistence.ResourcePermissionRepository;
+import io.github.doubletree.iam.applications.infrastructure.persistence.ResourceServerRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.RoleRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.TenantRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.UserRepository;
+import io.github.doubletree.iam.authentication.infrastructure.PasswordEncodingConfiguration;
+import io.github.doubletree.iam.directory.access.application.AdminAuthorizationService;
+import io.github.doubletree.iam.directory.access.application.PlatformAuthorityService;
+import io.github.doubletree.iam.directory.access.infrastructure.PlatformAuthorityRepository;
+import io.github.doubletree.iam.authentication.infrastructure.SecurityContextCurrentActor;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +49,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         SystemPermissionCatalogService.class,
         AuditApplicationService.class,
         AdminAuthorizationService.class,
+        PlatformAuthorityService.class,
+        SecurityContextCurrentActor.class,
         PasswordEncodingConfiguration.class
 })
 class DevelopmentDataBootstrapTests {
@@ -70,6 +75,9 @@ class DevelopmentDataBootstrapTests {
 
     @Autowired
     private PermissionRepository permissionRepository;
+
+    @Autowired
+    private PlatformAuthorityRepository platformAuthorityRepository;
 
     @Autowired
     private ResourceServerRepository resourceServerRepository;
@@ -149,25 +157,22 @@ class DevelopmentDataBootstrapTests {
     }
 
     @Test
-    void devAdminBootstrapCreatesEncodedAdminUserRoleAndPermissionsIdempotently() {
+    void devAdminBootstrapCreatesEncodedPlatformOperatorAndPermissionsIdempotently() {
         bootstrap.initialize();
         bootstrap.initialize();
 
         Tenant tenant = tenantRepository.findBySlug(DevelopmentDataBootstrap.DEVELOPMENT_TENANT_SLUG)
                 .orElseThrow();
         User admin = userRepository.findByTenantIdAndUsername(tenant.getId(), "admin").orElseThrow();
-        Role role = roleRepository.findByTenantIdAndName(tenant.getId(), DevelopmentDataBootstrap.ADMIN_ROLE_NAME)
-                .orElseThrow();
-
         assertThat(admin.getDisplayName()).isEqualTo(DevelopmentDataBootstrap.ADMIN_DISPLAY_NAME);
         assertThat(admin.getPasswordCredential().getPasswordHash()).isNotEqualTo("admin123456");
         assertThat(passwordEncoder.matches("admin123456", admin.getPasswordCredential().getPasswordHash())).isTrue();
-        assertThat(admin.getRoles()).extracting(Role::getName)
-                .containsExactly(DevelopmentDataBootstrap.ADMIN_ROLE_NAME);
-        assertThat(role.getPermissions()).hasSize(17);
+        assertThat(platformAuthorityRepository.existsById(admin.getId())).isTrue();
+        assertThat(admin.getRoles()).extracting(Role::getName).doesNotContain("platform-admin");
+        assertThat(roleRepository.findByTenantIdAndName(tenant.getId(), "platform-admin")).isEmpty();
         assertThat(permissionRepository.findBySystemManagedTrue(org.springframework.data.domain.Pageable.unpaged())
                 .getContent()).hasSize(17);
-        assertThat(userRepository.findByUsername("admin")).hasSize(1);
+        assertThat(userRepository.findByTenantIdAndUsername(tenant.getId(), "admin")).isPresent();
         assertThat(clientRepository.findAllByClientId(DevelopmentDataBootstrap.ADMIN_CONSOLE_CLIENT_ID)).hasSize(1);
     }
 

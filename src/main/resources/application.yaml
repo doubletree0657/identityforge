@@ -2,9 +2,9 @@ spring:
   application:
     name: identityforge
   datasource:
-    url: jdbc:postgresql://localhost:5432/identityforge
-    username: admin
-    password: admin
+    url: ${IAM_DB_URL}
+    username: ${IAM_DB_USERNAME}
+    password: ${IAM_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
   flyway:
     enabled: true
@@ -14,10 +14,22 @@ spring:
       ddl-auto: none
 
 iam:
+  http:
+    allowed-origins: ${IAM_ALLOWED_ORIGINS}
+  oauth:
+    issuer: ${IAM_OAUTH_ISSUER}
   security:
-    # Local development only. Do not use this key in production; use secure external key management.
-    secret-encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    secret-encryption-key: ${IAM_SECRET_ENCRYPTION_KEY}
+    signing-key-file: ${IAM_SIGNING_KEY_FILE}
 
 app:
   admin-console:
-    frontend-base-url: http://localhost:5173
+    frontend-base-url: ${IAM_ADMIN_CONSOLE_URL}
+
+server:
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${IAM_COOKIE_SECURE:true}

@@ -1,21 +1,20 @@
 package io.github.doubletree.iam.bootstrap;
 
-import io.github.doubletree.iam.domain.Client;
-import io.github.doubletree.iam.domain.ClientStatus;
-import io.github.doubletree.iam.domain.ClientType;
-import io.github.doubletree.iam.domain.ResourcePermission;
-import io.github.doubletree.iam.domain.ResourceServer;
-import io.github.doubletree.iam.domain.Role;
-import io.github.doubletree.iam.domain.Tenant;
-import io.github.doubletree.iam.domain.User;
-import io.github.doubletree.iam.application.service.SystemPermissionCatalogService;
-import io.github.doubletree.iam.application.service.UserApplicationService;
-import io.github.doubletree.iam.repository.ClientRepository;
-import io.github.doubletree.iam.repository.ResourcePermissionRepository;
-import io.github.doubletree.iam.repository.ResourceServerRepository;
-import io.github.doubletree.iam.repository.RoleRepository;
-import io.github.doubletree.iam.repository.TenantRepository;
-import io.github.doubletree.iam.repository.UserRepository;
+import io.github.doubletree.iam.applications.domain.Client;
+import io.github.doubletree.iam.applications.domain.ClientStatus;
+import io.github.doubletree.iam.applications.domain.ClientType;
+import io.github.doubletree.iam.applications.domain.ResourcePermission;
+import io.github.doubletree.iam.applications.domain.ResourceServer;
+import io.github.doubletree.iam.directory.domain.Tenant;
+import io.github.doubletree.iam.directory.domain.User;
+import io.github.doubletree.iam.directory.application.SystemPermissionCatalogService;
+import io.github.doubletree.iam.directory.application.UserApplicationService;
+import io.github.doubletree.iam.applications.infrastructure.persistence.ClientRepository;
+import io.github.doubletree.iam.applications.infrastructure.persistence.ResourcePermissionRepository;
+import io.github.doubletree.iam.applications.infrastructure.persistence.ResourceServerRepository;
+import io.github.doubletree.iam.directory.access.application.PlatformAuthorityService;
+import io.github.doubletree.iam.directory.infrastructure.persistence.TenantRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.UserRepository;
 import java.util.List;
 import java.util.Set;
 import org.springframework.boot.ApplicationArguments;
@@ -38,7 +37,6 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     static final String ADMIN_CONSOLE_CLIENT_NAME = "IdentityForge Console";
     static final String PAYROLL_RESOURCE_SERVER_IDENTIFIER = "payroll-api";
     static final String PAYROLL_RESOURCE_SERVER_NAME = "Payroll API";
-    static final String ADMIN_ROLE_NAME = SystemPermissionCatalogService.PLATFORM_ADMIN_ROLE_NAME;
     static final String ADMIN_DISPLAY_NAME = "Development Super Admin";
     private static final String DEVELOPMENT_CLIENT_SECRET = "secret";
     private static final Set<String> PAYROLL_PERMISSION_NAMES = Set.of(
@@ -62,7 +60,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     private final ResourceServerRepository resourceServerRepository;
     private final ResourcePermissionRepository resourcePermissionRepository;
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
+    private final PlatformAuthorityService platformAuthorityService;
     private final SystemPermissionCatalogService systemPermissionCatalogService;
     private final UserApplicationService userApplicationService;
     private final PasswordEncoder passwordEncoder;
@@ -77,7 +75,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
             ResourceServerRepository resourceServerRepository,
             ResourcePermissionRepository resourcePermissionRepository,
             UserRepository userRepository,
-            RoleRepository roleRepository,
+            PlatformAuthorityService platformAuthorityService,
             SystemPermissionCatalogService systemPermissionCatalogService,
             UserApplicationService userApplicationService,
             PasswordEncoder passwordEncoder,
@@ -90,7 +88,7 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
         this.resourceServerRepository = resourceServerRepository;
         this.resourcePermissionRepository = resourcePermissionRepository;
         this.userRepository = userRepository;
-        this.roleRepository = roleRepository;
+        this.platformAuthorityService = platformAuthorityService;
         this.systemPermissionCatalogService = systemPermissionCatalogService;
         this.userApplicationService = userApplicationService;
         this.passwordEncoder = passwordEncoder;
@@ -221,16 +219,12 @@ public class DevelopmentDataBootstrap implements ApplicationRunner {
     }
 
     private void initializeAdminUser(Tenant tenant) {
-        Role adminRole = roleRepository.findByTenantIdAndName(tenant.getId(), ADMIN_ROLE_NAME)
-                .orElseThrow(() -> new IllegalStateException("Platform admin role template was not initialized"));
-
         User adminUser = userRepository.findByTenantIdAndUsername(tenant.getId(), adminUsername)
                 .orElseGet(() -> userApplicationService.createUser(tenant.getId(), adminUsername, ADMIN_DISPLAY_NAME));
-        adminUser.getRoles().add(adminRole);
-        userRepository.save(adminUser);
         if (adminUser.getPasswordCredential() == null || resetAdminPassword) {
             userApplicationService.setInitialPassword(adminUser.getId(), adminPassword);
         }
+        platformAuthorityService.grant(adminUser.getId());
     }
 
 }

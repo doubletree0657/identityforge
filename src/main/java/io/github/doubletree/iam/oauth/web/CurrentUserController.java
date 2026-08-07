@@ -1,0 +1,62 @@
+package io.github.doubletree.iam.oauth.web;
+
+import io.github.doubletree.iam.directory.access.application.AdminAuthorities;
+import io.github.doubletree.iam.oauth.web.dto.CurrentUserResponse;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/me")
+public class CurrentUserController {
+
+    @GetMapping
+    public CurrentUserResponse currentUser(@AuthenticationPrincipal Jwt jwt) {
+        Set<String> roles = claimSet(jwt, "roles");
+        Set<String> scopes = claimSet(jwt, "scope");
+        Set<String> directRoles = claimSet(jwt, "direct_roles");
+        Set<String> groupRoles = claimSet(jwt, "group_roles");
+        Set<String> effectiveRoles = claimSet(jwt, "effective_roles");
+        Set<String> effectivePermissions = claimSet(jwt, "effective_permissions");
+        if (effectiveRoles.isEmpty()) {
+            effectiveRoles = roles;
+        }
+        return new CurrentUserResponse(
+                jwt.getSubject(),
+                jwt.getClaimAsString("preferred_username") == null
+                        ? jwt.getSubject()
+                        : jwt.getClaimAsString("preferred_username"),
+                jwt.getClaimAsString("user_id"),
+                jwt.getClaimAsString("tenant_id"),
+                jwt.getClaimAsString("display_name"),
+                effectiveRoles,
+                scopes,
+                directRoles,
+                groupRoles,
+                effectiveRoles,
+                effectivePermissions,
+                Boolean.TRUE.equals(jwt.getClaim("platform_operator")),
+                AdminAuthorities.isTenantAdmin(effectiveRoles));
+    }
+
+    private Set<String> claimSet(Jwt jwt, String claimName) {
+        Object claim = jwt.getClaims().get(claimName);
+        if (claim instanceof String value) {
+            if (value.isBlank()) {
+                return Set.of();
+            }
+            return Arrays.stream(value.split(" "))
+                    .filter(scope -> !scope.isBlank())
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+        }
+        return new LinkedHashSet<>(jwt.getClaimAsStringList(claimName) == null
+                ? Set.of()
+                : jwt.getClaimAsStringList(claimName));
+    }
+}
