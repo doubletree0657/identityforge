@@ -1,7 +1,10 @@
 package io.github.doubletree.iam.provisioning.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.doubletree.iam.directory.domain.Group;
 import io.github.doubletree.iam.directory.domain.User;
+import io.github.doubletree.iam.provisioning.api.ScimSchemas;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -9,25 +12,42 @@ public record ScimGroupResponse(
         List<String> schemas,
         UUID id,
         String displayName,
-        List<ScimMemberReference> members) {
+        List<ScimMemberReference> members,
+        ScimMeta meta) {
 
-    private static final List<String> GROUP_SCHEMAS =
-            List.of("urn:ietf:params:scim:schemas:core:2.0:Group");
-
-    public static ScimGroupResponse from(Group group) {
+    public static ScimGroupResponse from(Group group, String locationPrefix) {
         return new ScimGroupResponse(
-                GROUP_SCHEMAS,
+                ScimSchemas.GROUP_LIST,
                 group.getId(),
-                group.getName(),
+                group.getDisplayName(),
                 group.getUsers().stream()
-                        .map(ScimMemberReference::from)
-                        .toList());
+                        .sorted(Comparator.comparing(User::getUsername, String.CASE_INSENSITIVE_ORDER))
+                        .map(user -> ScimMemberReference.from(user, locationPrefix))
+                        .toList(),
+                new ScimMeta(
+                        "Group",
+                        group.getCreatedAt(),
+                        group.getUpdatedAt(),
+                        version(group.getVersion()),
+                        locationPrefix + "/Groups/" + group.getId()));
     }
 
-    public record ScimMemberReference(UUID value, String display) {
+    private static String version(long version) {
+        return "\"" + version + "\"";
+    }
 
-        static ScimMemberReference from(User user) {
-            return new ScimMemberReference(user.getId(), user.getDisplayName());
+    public record ScimMemberReference(
+            UUID value,
+            @JsonProperty("$ref") String reference,
+            String display,
+            String type) {
+
+        static ScimMemberReference from(User user, String locationPrefix) {
+            return new ScimMemberReference(
+                    user.getId(),
+                    locationPrefix + "/Users/" + user.getId(),
+                    user.getDisplayName(),
+                    "User");
         }
     }
 }

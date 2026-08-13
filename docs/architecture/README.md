@@ -11,7 +11,7 @@ Modulith to verify declared dependencies and reject cycles.
 | `authentication` | Realm login, passwords, MFA orchestration, and authenticated principals |
 | `applications` | OAuth clients, resource servers, application permissions, and secrets |
 | `oauth` | Spring Authorization Server integration, token profiles, consent, issuer, and signing keys |
-| `provisioning` | Thin SCIM-shaped adapters over directory use cases |
+| `provisioning` | SCIM 2.0 subset parsing, protocol DTOs/errors, and orchestration over directory and audit use cases |
 | `audit` | Security event persistence, request metadata, and tenant-scoped queries |
 | `bootstrap` | Development-only assembly and seed data |
 
@@ -47,6 +47,10 @@ persistence package.
   factor status and recovery-code counts, plus a destructive disable operation.
 - Signing keys are supplied through `SigningKeyProvider`; the development
   profile persists a local key outside source control.
+- SCIM is a protocol adapter, not a second identity store. Tenant-qualified
+  directory services own users, groups, membership, concurrency versions, and
+  security-version invalidation; provisioning owns SCIM schemas, filtering,
+  pagination, PATCH semantics, protocol errors, and protocol-level audit events.
 
 The decision records in [decisions](decisions/) explain the constraints and
 trade-offs. Product capabilities and limitations remain in the repository

@@ -41,7 +41,8 @@ The main local demo proves a complete application-scope flow:
 - Tenant-aware users, profiles, custom attributes, password credentials, and
   account status.
 - Group membership and user lifecycle administration.
-- SCIM-style user and group provisioning foundation.
+- A documented SCIM 2.0 supported subset for user, group, and direct-membership
+  provisioning, including filtering, pagination, PATCH, ETags, and SCIM errors.
 
 ### Tenant and Admin Authorization
 
@@ -373,6 +374,8 @@ For code review and interview discussion, the repository demonstrates:
 - Safe DTO boundaries, client secret handling, and avoidance of credential
   material in normal API responses.
 - Audit trail design for identity, authentication, consent, and token events.
+- A bounded, discoverable SCIM 2.0 protocol adapter over the same tenant-aware
+  directory and audit use cases used by the Admin Console.
 - Testcontainers integration tests, Docker-based local development, and CI/CD
   practice.
 
@@ -381,8 +384,10 @@ For code review and interview discussion, the repository demonstrates:
 - `/api/health` is public.
 - Admin APIs under `/api/**` require OAuth2 JWT scopes and backend Admin RBAC.
   Scopes are necessary but not sufficient for administrative access.
-- SCIM-style APIs under `/scim/v2/{tenantId}/**` require an admin audience,
+- SCIM APIs under `/scim/v2/{tenantId}/**` require an admin audience,
   scopes, concrete permissions, and the matching tenant boundary.
+- The implemented SCIM subset, examples, error mappings, and explicit non-goals
+  are documented in [SCIM 2.0 Supported Subset](docs/protocols/scim.md).
 - Interactive login identifiers use `realm/username`; tenant-local duplicate
   usernames are resolved only through the explicit realm.
 - Tenant roles cannot confer platform authority. Platform operator grants are
@@ -421,7 +426,9 @@ platform.
   hardening work.
 - Pairwise OIDC subject identifiers and advanced claim transformation remain
   future work.
-- SCIM provisioning needs broader protocol and workflow polish.
+- SCIM is a documented supported subset rather than full protocol conformance;
+  bulk, nested groups, extensions, attribute projection, and the complete
+  filter grammar remain out of scope.
 - The frontend is functional but is not a fully polished enterprise console.
 - Managed key rotation, production secret storage, session management, rate limiting,
   observability, high availability, and operational hardening remain future

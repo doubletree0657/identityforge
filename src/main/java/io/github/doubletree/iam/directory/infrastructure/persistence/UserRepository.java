@@ -1,5 +1,6 @@
 package io.github.doubletree.iam.directory.infrastructure.persistence;
 
+import io.github.doubletree.iam.directory.domain.AccountStatus;
 import io.github.doubletree.iam.directory.domain.User;
 import java.util.List;
 import java.util.Optional;
@@ -56,4 +57,19 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     @EntityGraph(attributePaths = {"roles", "groupMemberships", "groupMemberships.group", "groupMemberships.group.roles"})
     Page<User> findByTenantId(UUID tenantId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"groupMemberships", "groupMemberships.group"})
+    Page<User> findByTenantIdAndNormalizedUsername(UUID tenantId, String normalizedUsername, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"groupMemberships", "groupMemberships.group"})
+    Page<User> findByTenantIdAndDisplayNameIgnoreCase(UUID tenantId, String displayName, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"groupMemberships", "groupMemberships.group"})
+    Page<User> findByTenantIdAndEmailIgnoreCase(UUID tenantId, String email, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"groupMemberships", "groupMemberships.group"})
+    Page<User> findByTenantIdAndAccountStatus(UUID tenantId, AccountStatus accountStatus, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"groupMemberships", "groupMemberships.group"})
+    Page<User> findByTenantIdAndAccountStatusNot(UUID tenantId, AccountStatus accountStatus, Pageable pageable);
 }

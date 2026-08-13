@@ -154,6 +154,8 @@ public class AuthorizationServerConfiguration {
                 PathPatternRequestMatcher.withDefaults().matcher("/api/**"),
                 PathPatternRequestMatcher.withDefaults().matcher("/scim/v2/**"),
                 PathPatternRequestMatcher.withDefaults().matcher("/demo-resource-api/**"));
+        RequestMatcher scimEndpointsMatcher =
+                PathPatternRequestMatcher.withDefaults().matcher("/scim/v2/**");
 
         http
                 .authorizeHttpRequests(authorize -> authorize
@@ -169,6 +171,12 @@ public class AuthorizationServerConfiguration {
                         .requestMatchers(HttpMethod.DELETE, "/api/**").access(new AdminApiAuthorizationManager("iam.write"))
                         .requestMatchers("/api/**").access(new AdminApiAuthorizationManager("iam.read"))
                         .requestMatchers(HttpMethod.POST, "/scim/v2/**")
+                        .access(new AdminApiAuthorizationManager("iam.write"))
+                        .requestMatchers(HttpMethod.PUT, "/scim/v2/**")
+                        .access(new AdminApiAuthorizationManager("iam.write"))
+                        .requestMatchers(HttpMethod.PATCH, "/scim/v2/**")
+                        .access(new AdminApiAuthorizationManager("iam.write"))
+                        .requestMatchers(HttpMethod.DELETE, "/scim/v2/**")
                         .access(new AdminApiAuthorizationManager("iam.write"))
                         .requestMatchers("/scim/v2/**")
                         .access(new AdminApiAuthorizationManager("iam.read"))
@@ -194,6 +202,19 @@ public class AuthorizationServerConfiguration {
                         .logoutSuccessHandler(logoutSuccessHandler(auditApplicationService, adminConsoleFrontendBaseUrl)))
                 .exceptionHandling(exceptions -> exceptions
                         .defaultAuthenticationEntryPointFor(
+                                (request, response, exception) -> {
+                                    response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                                    response.setHeader("WWW-Authenticate", "Bearer");
+                                    writeScimSecurityError(response, HttpStatus.UNAUTHORIZED, "Authentication is required");
+                                },
+                                scimEndpointsMatcher)
+                        .defaultAccessDeniedHandlerFor(
+                                (request, response, exception) -> {
+                                    response.setStatus(HttpStatus.FORBIDDEN.value());
+                                    writeScimSecurityError(response, HttpStatus.FORBIDDEN, "The request is not authorized");
+                                },
+                                scimEndpointsMatcher)
+                        .defaultAuthenticationEntryPointFor(
                                 new BearerTokenAuthenticationEntryPoint(),
                                 apiEndpointsMatcher)
                         .defaultAccessDeniedHandlerFor(
@@ -204,6 +225,15 @@ public class AuthorizationServerConfiguration {
                 .csrf(csrf -> csrf.ignoringRequestMatchers(apiEndpointsMatcher));
 
         return http.build();
+    }
+
+    private void writeScimSecurityError(
+            HttpServletResponse response,
+            HttpStatus status,
+            String detail) throws IOException {
+        response.setContentType("application/scim+json");
+        response.getWriter().write("{\"schemas\":[\"urn:ietf:params:scim:api:messages:2.0:Error\"],"
+                + "\"status\":\"" + status.value() + "\",\"detail\":\"" + detail + "\"}");
     }
 
     private void auditTokenRefresh(

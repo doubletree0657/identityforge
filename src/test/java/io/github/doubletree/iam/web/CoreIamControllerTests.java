@@ -12,6 +12,10 @@ import io.github.doubletree.iam.directory.web.UserController;
 import io.github.doubletree.iam.oauth.web.CurrentUserController;
 import io.github.doubletree.iam.oauth.web.DemoResourceApiController;
 import io.github.doubletree.iam.provisioning.web.ScimController;
+import io.github.doubletree.iam.provisioning.web.ScimExceptionHandler;
+import io.github.doubletree.iam.provisioning.application.ScimProvisioningService;
+import io.github.doubletree.iam.provisioning.api.ScimProtocolException;
+import io.github.doubletree.iam.provisioning.api.ScimResultPage;
 import io.github.doubletree.iam.shared.web.RestExceptionHandler;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -22,6 +26,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -74,6 +79,7 @@ import io.github.doubletree.iam.directory.domain.UserProfile;
 import io.github.doubletree.iam.authentication.infrastructure.PasswordEncodingConfiguration;
 import io.github.doubletree.iam.authentication.infrastructure.MfaAuthenticationSuccessHandler;
 import io.github.doubletree.iam.authentication.infrastructure.PlatformUserDetails;
+import io.github.doubletree.iam.authentication.infrastructure.SecurityContextCurrentActor;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -105,13 +111,15 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
         AuditLogController.class,
         CurrentUserController.class,
         ScimController.class,
+        ScimExceptionHandler.class,
         DemoResourceApiController.class,
         RestExceptionHandler.class
 })
 @Import({
         AuthorizationServerConfiguration.class,
         FileSigningKeyProvider.class,
-        PasswordEncodingConfiguration.class
+        PasswordEncodingConfiguration.class,
+        SecurityContextCurrentActor.class
 })
 class CoreIamControllerTests {
 
@@ -150,6 +158,9 @@ class CoreIamControllerTests {
 
     @MockitoBean
     private GroupApplicationService groupApplicationService;
+
+    @MockitoBean
+    private ScimProvisioningService scimProvisioningService;
 
     @MockitoBean
     private MfaApplicationService mfaApplicationService;
@@ -1376,31 +1387,38 @@ class CoreIamControllerTests {
 
     @Test
     void createsScimUser() throws Exception {
-        when(userApplicationService.createUser(eq(TENANT_ID), eq("scim-user"), eq("SCIM User")))
-                .thenReturn(user("scim-user", "SCIM User"));
+        User scimUser = user("scim-user", "SCIM User");
+        scimUser.setAccountStatus(AccountStatus.ACTIVE);
+        when(scimProvisioningService.createUser(eq(TENANT_ID), any())).thenReturn(scimUser);
 
         mockMvc.perform(post("/scim/v2/{tenantId}/Users", TENANT_ID)
                         .with(writeScopeJwt)
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType("application/scim+json")
                         .content("""
                                 {
+                                  "schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
                                   "userName":"scim-user",
                                   "displayName":"SCIM User"
                                 }
                                 """))
                 .andExpect(status().isCreated())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("application/scim+json")))
+                .andExpect(header().string(HttpHeaders.LOCATION, containsString("/scim/v2/" + TENANT_ID + "/Users/" + USER_ID)))
+                .andExpect(header().string(HttpHeaders.ETAG, "\"0\""))
                 .andExpect(jsonPath("$.schemas[0]").value("urn:ietf:params:scim:schemas:core:2.0:User"))
                 .andExpect(jsonPath("$.id").value(USER_ID.toString()))
                 .andExpect(jsonPath("$.userName").value("scim-user"))
                 .andExpect(jsonPath("$.displayName").value("SCIM User"))
                 .andExpect(jsonPath("$.active").value(true))
+                .andExpect(jsonPath("$.meta.resourceType").value("User"))
+                .andExpect(jsonPath("$.meta.location").value(containsString("/Users/" + USER_ID)))
                 .andExpect(jsonPath("$.mfaSecret").doesNotExist());
     }
 
     @Test
     void readsScimUser() throws Exception {
         User user = user("read-scim-user", "Read SCIM User");
-        when(userApplicationService.findUser(eq(TENANT_ID), eq(USER_ID)))
+        when(scimProvisioningService.getUser(eq(TENANT_ID), eq(USER_ID)))
                 .thenReturn(user);
 
         mockMvc.perform(get("/scim/v2/{tenantId}/Users/{id}", TENANT_ID, USER_ID)
@@ -1412,23 +1430,58 @@ class CoreIamControllerTests {
     }
 
     @Test
+    void listsScimUsersWithStandardPaginationAndFilterEnvelope() throws Exception {
+        User user = user("filtered-user", "Filtered User");
+        when(scimProvisioningService.listUsers(
+                        TENANT_ID, "userName eq \"filtered-user\"", 3, 25))
+                .thenReturn(new ScimResultPage<>(7, List.of(user)));
+
+        mockMvc.perform(get("/scim/v2/{tenantId}/Users", TENANT_ID)
+                        .queryParam("filter", "userName eq \"filtered-user\"")
+                        .queryParam("startIndex", "3")
+                        .queryParam("count", "25")
+                        .with(readScopeJwt))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("application/scim+json")))
+                .andExpect(jsonPath("$.schemas[0]").value("urn:ietf:params:scim:api:messages:2.0:ListResponse"))
+                .andExpect(jsonPath("$.totalResults").value(7))
+                .andExpect(jsonPath("$.startIndex").value(3))
+                .andExpect(jsonPath("$.itemsPerPage").value(1))
+                .andExpect(jsonPath("$.Resources[0].userName").value("filtered-user"));
+    }
+
+    @Test
+    void exposesScimSupportedCapabilitiesToUserReaders() throws Exception {
+        mockMvc.perform(get("/scim/v2/{tenantId}/ServiceProviderConfig", TENANT_ID)
+                        .with(usersReadPermissionJwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.schemas[0]")
+                        .value("urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"))
+                .andExpect(jsonPath("$.patch.supported").value(true))
+                .andExpect(jsonPath("$.filter.maxResults").value(100))
+                .andExpect(jsonPath("$.bulk.supported").value(false))
+                .andExpect(jsonPath("$.changePassword.supported").value(false))
+                .andExpect(jsonPath("$.etag.supported").value(true));
+    }
+
+    @Test
     void createsScimGroup() throws Exception {
         Group group = group("engineering");
         group.addUser(user("scim-member", "SCIM Member"));
-        when(groupApplicationService.createGroupWithMembers(
-                        eq(TENANT_ID), eq("engineering"), eq(List.of(USER_ID))))
-                .thenReturn(group);
+        when(scimProvisioningService.createGroup(eq(TENANT_ID), any())).thenReturn(group);
 
         mockMvc.perform(post("/scim/v2/{tenantId}/Groups", TENANT_ID)
                         .with(writeScopeJwt)
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType("application/scim+json")
                         .content("""
                                 {
+                                  "schemas":["urn:ietf:params:scim:schemas:core:2.0:Group"],
                                   "displayName":"engineering",
-                                  "members":["00000000-0000-0000-0000-000000000002"]
+                                  "members":[{"value":"00000000-0000-0000-0000-000000000002","type":"User"}]
                                 }
                                 """))
                 .andExpect(status().isCreated())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("application/scim+json")))
                 .andExpect(jsonPath("$.schemas[0]").value("urn:ietf:params:scim:schemas:core:2.0:Group"))
                 .andExpect(jsonPath("$.id").value(GROUP_ID.toString()))
                 .andExpect(jsonPath("$.displayName").value("engineering"))
@@ -1439,7 +1492,7 @@ class CoreIamControllerTests {
     void readsScimGroup() throws Exception {
         Group group = group("readers");
         group.addUser(user("reader", "Reader User"));
-        when(groupApplicationService.findGroup(eq(TENANT_ID), eq(GROUP_ID)))
+        when(scimProvisioningService.getGroup(eq(TENANT_ID), eq(GROUP_ID)))
                 .thenReturn(group);
 
         mockMvc.perform(get("/scim/v2/{tenantId}/Groups/{id}", TENANT_ID, GROUP_ID)
@@ -1448,6 +1501,106 @@ class CoreIamControllerTests {
                 .andExpect(jsonPath("$.id").value(GROUP_ID.toString()))
                 .andExpect(jsonPath("$.displayName").value("readers"))
                 .andExpect(jsonPath("$.members[0].display").value("Reader User"));
+    }
+
+    @Test
+    void patchesScimGroupMembershipUsingCapitalizedOperationsField() throws Exception {
+        Group group = group("engineering");
+        group.addUser(user("member", "Member User"));
+        when(scimProvisioningService.patchGroup(eq(TENANT_ID), eq(GROUP_ID), any(), eq("\"0\"")))
+                .thenReturn(group);
+
+        mockMvc.perform(patch("/scim/v2/{tenantId}/Groups/{id}", TENANT_ID, GROUP_ID)
+                        .with(writeScopeJwt)
+                        .header(HttpHeaders.IF_MATCH, "\"0\"")
+                        .contentType("application/scim+json")
+                        .content("""
+                                {
+                                  "schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                                  "Operations":[{
+                                    "op":"add",
+                                    "path":"members",
+                                    "value":[{"value":"00000000-0000-0000-0000-000000000002"}]
+                                  }]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"0\""))
+                .andExpect(jsonPath("$.members[0].value").value(USER_ID.toString()));
+        verify(scimProvisioningService).patchGroup(eq(TENANT_ID), eq(GROUP_ID), any(), eq("\"0\""));
+    }
+
+    @Test
+    void scimPatchAndDeleteRequireWriteScope() throws Exception {
+        mockMvc.perform(patch("/scim/v2/{tenantId}/Users/{id}", TENANT_ID, USER_ID)
+                        .with(readScopeJwt)
+                        .contentType("application/scim+json")
+                        .content("""
+                                {"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                                 "Operations":[{"op":"replace","path":"active","value":false}]}
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("application/scim+json")))
+                .andExpect(jsonPath("$.schemas[0]").value("urn:ietf:params:scim:api:messages:2.0:Error"));
+        mockMvc.perform(delete("/scim/v2/{tenantId}/Groups/{id}", TENANT_ID, GROUP_ID)
+                        .with(readScopeJwt))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void returnsAndAuditsScimProtocolErrors() throws Exception {
+        when(scimProvisioningService.listUsers(TENANT_ID, "displayName co \"Ali\"", 1, 50))
+                .thenThrow(ScimProtocolException.invalidFilter("Only eq is supported"));
+
+        mockMvc.perform(get("/scim/v2/{tenantId}/Users", TENANT_ID)
+                        .queryParam("filter", "displayName co \"Ali\"")
+                        .with(readScopeJwt))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("application/scim+json")))
+                .andExpect(jsonPath("$.schemas[0]").value("urn:ietf:params:scim:api:messages:2.0:Error"))
+                .andExpect(jsonPath("$.status").value("400"))
+                .andExpect(jsonPath("$.scimType").value("invalidFilter"))
+                .andExpect(jsonPath("$.detail").value("Only eq is supported"));
+        verify(auditApplicationService).recordFailure(
+                TENANT_ID, "SCIM_REQUEST_REJECTED", "TENANT", TENANT_ID, "INVALID_FILTER");
+    }
+
+    @Test
+    void mapsScimUniquenessAndJsonFailuresToStandardErrors() throws Exception {
+        when(scimProvisioningService.createUser(eq(TENANT_ID), any()))
+                .thenThrow(new ValidationException("Username already exists in tenant"));
+
+        mockMvc.perform(post("/scim/v2/{tenantId}/Users", TENANT_ID)
+                        .with(writeScopeJwt)
+                        .contentType("application/scim+json")
+                        .content("""
+                                {"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
+                                 "userName":"duplicate"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value("409"))
+                .andExpect(jsonPath("$.scimType").value("uniqueness"));
+
+        mockMvc.perform(post("/scim/v2/{tenantId}/Users", TENANT_ID)
+                        .with(writeScopeJwt)
+                        .contentType("application/scim+json")
+                        .content("{not-json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("400"))
+                .andExpect(jsonPath("$.scimType").value("invalidSyntax"));
+    }
+
+    @Test
+    void auditsCrossTenantScimRejectionAgainstTheCallerTenant() throws Exception {
+        when(scimProvisioningService.getUser(OTHER_TENANT_ID, USER_ID))
+                .thenThrow(new AccessDeniedException("cross tenant"));
+
+        mockMvc.perform(get("/scim/v2/{tenantId}/Users/{id}", OTHER_TENANT_ID, USER_ID)
+                        .with(usersReadPermissionJwt))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.detail").value("The requested tenant resource is not accessible"));
+        verify(auditApplicationService).recordFailure(
+                TENANT_ID, "SCIM_REQUEST_REJECTED", "TENANT", TENANT_ID, "HTTP_403");
     }
 
     @Test
@@ -1573,7 +1726,11 @@ class CoreIamControllerTests {
                                   "displayName":"SCIM User"
                                 }
                                 """))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("application/scim+json")))
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"))
+                .andExpect(jsonPath("$.schemas[0]").value("urn:ietf:params:scim:api:messages:2.0:Error"))
+                .andExpect(jsonPath("$.status").value("401"));
     }
 
     @Test

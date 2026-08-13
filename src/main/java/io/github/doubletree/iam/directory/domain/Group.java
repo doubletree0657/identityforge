@@ -145,7 +145,10 @@ public class Group {
     }
 
     public void setUsers(Set<User> users) {
-        memberships.clear();
+        new LinkedHashSet<>(memberships).forEach(membership -> {
+            memberships.remove(membership);
+            membership.getUser().getGroupMemberships().remove(membership);
+        });
         if (users != null) {
             users.forEach(this::addUser);
         }

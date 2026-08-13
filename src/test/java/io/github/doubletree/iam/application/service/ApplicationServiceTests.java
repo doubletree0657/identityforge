@@ -10,6 +10,7 @@ import io.github.doubletree.iam.directory.application.RoleApplicationService;
 import io.github.doubletree.iam.directory.application.SystemPermissionCatalogService;
 import io.github.doubletree.iam.directory.application.TenantApplicationService;
 import io.github.doubletree.iam.directory.application.UserApplicationService;
+import io.github.doubletree.iam.provisioning.application.ScimProvisioningService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -18,6 +19,10 @@ import io.github.doubletree.iam.shared.exception.ClientValidationException;
 import io.github.doubletree.iam.shared.exception.PasswordValidationException;
 import io.github.doubletree.iam.shared.exception.TenantBoundaryViolationException;
 import io.github.doubletree.iam.shared.exception.ValidationException;
+import io.github.doubletree.iam.provisioning.api.ScimSchemas;
+import io.github.doubletree.iam.provisioning.web.dto.ScimGroupRequest;
+import io.github.doubletree.iam.provisioning.web.dto.ScimPatchRequest;
+import io.github.doubletree.iam.provisioning.web.dto.ScimUserRequest;
 import io.github.doubletree.iam.applications.api.ClientSecretResult;
 import io.github.doubletree.iam.authentication.api.MfaEnrollmentResult;
 import io.github.doubletree.iam.directory.domain.AccountStatus;
@@ -97,7 +102,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         SecurityContextCurrentActor.class,
         PasswordEncodingConfiguration.class,
         SecretEncryptionService.class,
-        MfaApplicationService.class
+        MfaApplicationService.class,
+        ScimProvisioningService.class
 })
 class ApplicationServiceTests {
 
@@ -124,6 +130,9 @@ class ApplicationServiceTests {
 
     @Autowired
     private MfaApplicationService mfaApplicationService;
+
+    @Autowired
+    private ScimProvisioningService scimProvisioningService;
 
     @Autowired
     private ResourceServerApplicationService resourceServerApplicationService;
@@ -1560,6 +1569,95 @@ class ApplicationServiceTests {
         assertThat(auditLogRepository.findByAction("USER_REMOVED_FROM_GROUP"))
                 .singleElement()
                 .satisfies(auditLog -> assertThat(auditLog.getResourceId()).isEqualTo(group.getId()));
+    }
+
+    @Test
+    void scimUserGroupMembershipFilteringAndPatchFormACompleteSlice() {
+        Tenant tenant = tenantApplicationService.createTenant("SCIM Lifecycle Tenant");
+        User actor = userApplicationService.createUser(tenant.getId(), "scim-actor", "SCIM Actor");
+        authenticateUser(actor, List.of(
+                "iam.users.read", "iam.users.write", "iam.groups.read", "iam.groups.write"));
+
+        User provisioned = scimProvisioningService.createUser(
+                tenant.getId(),
+                new ScimUserRequest(
+                        List.of(ScimSchemas.USER),
+                        "alice.scim",
+                        "Alice SCIM",
+                        true,
+                        List.of(new ScimUserRequest.ScimEmail("alice@example.test", "work", true))));
+
+        assertThat(provisioned.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(provisioned.getEmail()).isEqualTo("alice@example.test");
+        assertThat(scimProvisioningService.listUsers(
+                                tenant.getId(), "userName eq \"alice.scim\"", 1, 10)
+                        .resources())
+                .extracting(User::getId)
+                .containsExactly(provisioned.getId());
+        assertThat(scimProvisioningService.listUsers(
+                                tenant.getId(), "emails.value eq \"ALICE@example.test\"", 1, 10)
+                        .totalResults())
+                .isEqualTo(1);
+
+        Group group = scimProvisioningService.createGroup(
+                tenant.getId(),
+                new ScimGroupRequest(
+                        List.of(ScimSchemas.GROUP),
+                        "SCIM Operators",
+                        List.of(new ScimGroupRequest.ScimMember(provisioned.getId(), "User"))));
+        assertThat(scimProvisioningService.listGroups(
+                                tenant.getId(),
+                                "members.value eq \"" + provisioned.getId() + "\"",
+                                1,
+                                10)
+                        .resources())
+                .extracting(Group::getId)
+                .containsExactly(group.getId());
+
+        scimProvisioningService.patchGroup(
+                tenant.getId(),
+                group.getId(),
+                new ScimPatchRequest(
+                        List.of(ScimSchemas.PATCH_OP),
+                        List.of(new ScimPatchRequest.Operation(
+                                "remove",
+                                "members[value eq \"" + provisioned.getId() + "\"]",
+                                null))));
+
+        assertThat(groupRepository.findById(group.getId()).orElseThrow().getUsers()).isEmpty();
+        assertThat(auditLogRepository.findByAction("SCIM_USER_CREATED"))
+                .singleElement()
+                .satisfies(log -> {
+                    assertThat(log.getTenantId()).isEqualTo(tenant.getId());
+                    assertThat(log.getResourceId()).isEqualTo(provisioned.getId());
+                    assertAuditLogDoesNotContain(log, "alice@example.test");
+                });
+        assertThat(auditLogRepository.findByAction("SCIM_GROUP_CREATED")).hasSize(1);
+        assertThat(auditLogRepository.findByAction("SCIM_GROUP_MEMBERSHIP_CHANGED")).hasSize(2);
+    }
+
+    @Test
+    void scimProvisioningRejectsCrossTenantMembershipBeforeMutation() {
+        Tenant callerTenant = tenantApplicationService.createTenant("SCIM Caller Tenant");
+        Tenant foreignTenant = tenantApplicationService.createTenant("SCIM Foreign Tenant");
+        User actor = userApplicationService.createUser(callerTenant.getId(), "scim-boundary-actor", "Boundary Actor");
+        User foreignUser = userApplicationService.createUser(
+                foreignTenant.getId(), "foreign-scim-user", "Foreign SCIM User");
+        Group localGroup = groupApplicationService.createGroup(callerTenant.getId(), "local-scim-group");
+        authenticateUser(actor, List.of("iam.groups.write"));
+
+        assertThatThrownBy(() -> scimProvisioningService.replaceGroup(
+                        callerTenant.getId(),
+                        localGroup.getId(),
+                        new ScimGroupRequest(
+                                List.of(ScimSchemas.GROUP),
+                                "Local SCIM Group",
+                                List.of(new ScimGroupRequest.ScimMember(foreignUser.getId(), "User")))))
+                .isInstanceOf(TenantBoundaryViolationException.class)
+                .hasMessage("User does not belong to the requested tenant");
+
+        assertThat(groupRepository.findById(localGroup.getId()).orElseThrow().getUsers()).isEmpty();
+        assertThat(auditLogRepository.findByAction("SCIM_GROUP_REPLACED")).isEmpty();
     }
 
     @Test

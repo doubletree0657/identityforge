@@ -19,4 +19,10 @@ public interface GroupRepository extends JpaRepository<Group, UUID> {
     @Override
     @EntityGraph(attributePaths = {"memberships", "memberships.user", "roles", "roles.permissions"})
     java.util.Optional<Group> findById(UUID id);
+
+    @EntityGraph(attributePaths = {"memberships", "memberships.user"})
+    Page<Group> findByTenantIdAndDisplayNameIgnoreCase(UUID tenantId, String displayName, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"memberships", "memberships.user"})
+    Page<Group> findDistinctByTenantIdAndMembershipsUserId(UUID tenantId, UUID userId, Pageable pageable);
 }

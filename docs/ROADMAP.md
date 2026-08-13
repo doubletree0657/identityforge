@@ -7,8 +7,8 @@ The current milestone demonstrates a working Admin Console, tenant-aware
 identity administration, backend-enforced RBAC, OAuth2 Authorization Code +
 PKCE, tenant-owned application scopes, token lifecycle foundations, consent
 management, audit logging, and a complete local scope-protected resource API
-demo. OIDC ID Token and UserInfo identity claims are also implemented with
-explicit privacy boundaries.
+demo. OIDC identity claims and a documented SCIM 2.0 provisioning subset are
+also implemented with explicit privacy and tenant boundaries.
 
 The next phase is not to claim production readiness. It is to improve portfolio
 presentation, complete selected identity protocol foundations, and harden the
@@ -74,6 +74,18 @@ more depth.
 - Recovery-code status, full-set regeneration, revocation on factor replacement
   or disable, login fallback, attempt throttling, and non-sensitive audit events.
 - Self-service secret boundaries with administrator-only status and disable UX.
+
+### SCIM 2.0 Provisioning Supported Subset
+
+- Tenant-scoped user and group CRUD with direct membership provisioning.
+- Standard SCIM schemas, media type, list envelopes, one-based pagination,
+  bounded equality filters, PATCH operations, errors, ETags, and capability
+  discovery.
+- Backend permission and tenant isolation, membership-driven token
+  invalidation, protocol-level success/failure audit, and Admin Console audit
+  visibility.
+- An explicit support matrix and non-goals that distinguish the implemented
+  subset from full SCIM conformance.
 
 ### Tenant-Aware RBAC and Effective Permissions
 
@@ -156,7 +168,8 @@ more depth.
   hardening work.
 - Pairwise subject identifiers and advanced claim transformation remain future
   work.
-- SCIM-style provisioning needs broader protocol and workflow polish.
+- SCIM bulk, nested groups, extensions, attribute projection, POST search, and
+  the complete filter grammar remain outside the supported subset.
 - The frontend is functional but is not a fully polished enterprise console.
 - Managed signing-key rotation, session management, rate limiting,
   observability, high availability, and operational hardening remain future
@@ -169,12 +182,6 @@ more depth.
 - Add current screenshots and a concise visual demo narrative.
 - Keep README walkthroughs aligned with the implemented Admin Console.
 - Improve reviewer orientation without overstating product maturity.
-
-### SCIM Provisioning Polish
-
-- Expand user, group, membership, filtering, pagination, and error behavior.
-- Document SCIM-inspired behavior versus full protocol compliance.
-- Strengthen provisioning audit events and tenant-boundary tests.
 
 ### Production Session and Token Hardening
 

@@ -114,6 +114,9 @@ public class AdminApiAuthorizationManager implements AuthorizationManager<Reques
         if (path.contains("/scim/v2/") && path.contains("/Groups")) {
             return write ? BuiltInPermission.GROUPS_WRITE.permissionName() : BuiltInPermission.GROUPS_READ.permissionName();
         }
+        if (path.contains("/scim/v2/") && path.contains("/ServiceProviderConfig")) {
+            return write ? null : BuiltInPermission.USERS_READ.permissionName();
+        }
         return write ? BuiltInPermission.IAM_ADMIN.permissionName() : BuiltInPermission.IAM_ADMIN.permissionName();
     }
 

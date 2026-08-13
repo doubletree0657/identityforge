@@ -98,6 +98,37 @@ public class UserApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public Page<User> listUsersByUsername(UUID tenantId, String username, Pageable pageable) {
+        UUID allowedTenantId = requireTenantForProvisioning(tenantId);
+        return userRepository.findByTenantIdAndNormalizedUsername(
+                allowedTenantId,
+                io.github.doubletree.iam.directory.domain.UsernameNormalizer.normalize(username),
+                pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<User> listUsersByDisplayName(UUID tenantId, String displayName, Pageable pageable) {
+        return userRepository.findByTenantIdAndDisplayNameIgnoreCase(
+                requireTenantForProvisioning(tenantId), displayName, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<User> listUsersByEmail(UUID tenantId, String email, Pageable pageable) {
+        return userRepository.findByTenantIdAndEmailIgnoreCase(
+                requireTenantForProvisioning(tenantId),
+                identityValue(() -> IdentityAttributePolicy.normalizeEmail(email)),
+                pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<User> listUsersByActive(UUID tenantId, boolean active, Pageable pageable) {
+        UUID allowedTenantId = requireTenantForProvisioning(tenantId);
+        return active
+                ? userRepository.findByTenantIdAndAccountStatus(allowedTenantId, AccountStatus.ACTIVE, pageable)
+                : userRepository.findByTenantIdAndAccountStatusNot(allowedTenantId, AccountStatus.ACTIVE, pageable);
+    }
+
+    @Transactional(readOnly = true)
     public User findUser(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
@@ -152,6 +183,51 @@ public class UserApplicationService {
                     savedUser.getTenant().getId(), "USER_STATUS_CHANGED", "USER", savedUser.getId());
         }
         return savedUser;
+    }
+
+    @Transactional
+    public User replaceUser(
+            UUID tenantId,
+            UUID userId,
+            String username,
+            String displayName,
+            String email,
+            AccountStatus accountStatus) {
+        User user = findUser(tenantId, userId);
+        String normalizedUsername;
+        try {
+            normalizedUsername = io.github.doubletree.iam.directory.domain.UsernameNormalizer.normalize(username);
+        } catch (IllegalArgumentException exception) {
+            throw new ValidationException(exception.getMessage());
+        }
+        userRepository.findByTenantIdAndNormalizedUsername(tenantId, normalizedUsername)
+                .filter(existing -> !existing.getId().equals(userId))
+                .ifPresent(existing -> {
+                    throw new ValidationException("Username already exists in tenant");
+                });
+        AccountStatus previousStatus = user.getAccountStatus();
+        user.setUsername(username);
+        user.setDisplayName(displayName);
+        user.setEmail(email == null || email.isBlank()
+                ? null
+                : identityValue(() -> IdentityAttributePolicy.normalizeEmail(email)));
+        user.setAccountStatus(accountStatus);
+        if (accountStatus != previousStatus) {
+            incrementSecurityVersion(user);
+        }
+        User savedUser = userRepository.save(user);
+        auditApplicationService.recordEvent(tenantId, "USER_UPDATED", "USER", savedUser.getId());
+        if (accountStatus != previousStatus) {
+            auditApplicationService.recordEvent(tenantId, "USER_STATUS_CHANGED", "USER", savedUser.getId());
+        }
+        return savedUser;
+    }
+
+    @Transactional
+    public void deleteUser(UUID tenantId, UUID userId) {
+        User user = findUser(tenantId, userId);
+        userRepository.delete(user);
+        auditApplicationService.recordEvent(tenantId, "USER_DELETED", "USER", userId);
     }
 
     @Transactional
@@ -309,6 +385,14 @@ public class UserApplicationService {
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
         adminAuthorizationService.assertTenantAccess(user.getTenant().getId());
         return user;
+    }
+
+    private UUID requireTenantForProvisioning(UUID tenantId) {
+        UUID allowedTenantId = adminAuthorizationService.tenantIdForList(tenantId);
+        if (allowedTenantId == null) {
+            throw new ValidationException("A tenant is required for provisioning queries");
+        }
+        return allowedTenantId;
     }
 
     private void applyPasswordChange(User user, String rawPassword) {

@@ -13,6 +13,9 @@ import io.github.doubletree.iam.directory.infrastructure.persistence.TenantRepos
 import io.github.doubletree.iam.directory.infrastructure.persistence.UserRepository;
 import io.github.doubletree.iam.directory.infrastructure.persistence.PasswordCredentialRepository;
 import io.github.doubletree.iam.directory.access.application.AdminAuthorizationService;
+import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -89,6 +92,19 @@ public class GroupApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public Page<Group> listGroupsByDisplayName(UUID tenantId, String displayName, Pageable pageable) {
+        return groupRepository.findByTenantIdAndDisplayNameIgnoreCase(
+                requireTenantForProvisioning(tenantId), displayName, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Group> listGroupsByMember(UUID tenantId, UUID userId, Pageable pageable) {
+        findUserInTenant(tenantId, userId);
+        return groupRepository.findDistinctByTenantIdAndMembershipsUserId(
+                requireTenantForProvisioning(tenantId), userId, pageable);
+    }
+
+    @Transactional(readOnly = true)
     public Group findGroup(UUID groupId) {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new EntityNotFoundException("Group not found: " + groupId));
@@ -123,6 +139,35 @@ public class GroupApplicationService {
     }
 
     @Transactional
+    public Group replaceGroup(UUID tenantId, UUID groupId, String displayName, Set<UUID> memberIds) {
+        Group group = findGroup(tenantId, groupId);
+        Set<User> desiredUsers = loadUsersInTenant(tenantId, memberIds);
+        Set<User> previousUsers = new LinkedHashSet<>(group.getUsers());
+        boolean membershipChanged = !previousUsers.equals(desiredUsers);
+        group.setName(displayName);
+        group.setDisplayName(displayName);
+        group.setUsers(desiredUsers);
+        invalidateChangedMembers(previousUsers, desiredUsers);
+        if (membershipChanged) {
+            group.setUpdatedAt(Instant.now());
+        }
+        Group savedGroup = groupRepository.save(group);
+        auditApplicationService.recordEvent(tenantId, "GROUP_UPDATED", "GROUP", savedGroup.getId());
+        if (membershipChanged) {
+            auditApplicationService.recordEvent(tenantId, "GROUP_MEMBERS_REPLACED", "GROUP", savedGroup.getId());
+        }
+        return savedGroup;
+    }
+
+    @Transactional
+    public void deleteGroup(UUID tenantId, UUID groupId) {
+        Group group = findGroup(tenantId, groupId);
+        group.getUsers().forEach(this::invalidateMembershipForUser);
+        groupRepository.delete(group);
+        auditApplicationService.recordEvent(tenantId, "GROUP_DELETED", "GROUP", groupId);
+    }
+
+    @Transactional
     public Group addUserToGroup(UUID groupId, UUID userId) {
         Group group = findGroup(groupId);
         User user = userRepository.findById(userId)
@@ -131,11 +176,16 @@ public class GroupApplicationService {
         adminAuthorizationService.assertSameTenant(
                 group.getTenant().getId(), user.getTenant().getId(), "User and group must belong to the same tenant");
 
-        group.addUser(user);
-        passwordCredentialRepository.incrementVersionForUser(user.getId());
+        boolean added = group.addUser(user);
+        if (added) {
+            invalidateMembershipForUser(user);
+            group.setUpdatedAt(Instant.now());
+        }
         Group savedGroup = groupRepository.save(group);
-        auditApplicationService.recordEvent(
-                savedGroup.getTenant().getId(), "USER_ADDED_TO_GROUP", "GROUP", savedGroup.getId());
+        if (added) {
+            auditApplicationService.recordEvent(
+                    savedGroup.getTenant().getId(), "USER_ADDED_TO_GROUP", "GROUP", savedGroup.getId());
+        }
         return savedGroup;
     }
 
@@ -150,7 +200,8 @@ public class GroupApplicationService {
 
         boolean removed = group.removeUser(user);
         if (removed) {
-            passwordCredentialRepository.incrementVersionForUser(user.getId());
+            invalidateMembershipForUser(user);
+            group.setUpdatedAt(Instant.now());
         }
         Group savedGroup = groupRepository.save(group);
         if (removed) {
@@ -195,5 +246,44 @@ public class GroupApplicationService {
                     savedGroup.getTenant().getId(), "ROLE_REMOVED_FROM_GROUP", "GROUP", savedGroup.getId());
         }
         return savedGroup;
+    }
+
+    private UUID requireTenantForProvisioning(UUID tenantId) {
+        UUID allowedTenantId = adminAuthorizationService.tenantIdForList(tenantId);
+        if (allowedTenantId == null) {
+            throw new io.github.doubletree.iam.shared.exception.ValidationException(
+                    "A tenant is required for provisioning queries");
+        }
+        return allowedTenantId;
+    }
+
+    private User findUserInTenant(UUID tenantId, UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+        adminAuthorizationService.assertSameTenant(
+                tenantId, user.getTenant().getId(), "User does not belong to the requested tenant");
+        return user;
+    }
+
+    private Set<User> loadUsersInTenant(UUID tenantId, Set<UUID> memberIds) {
+        Set<User> users = new LinkedHashSet<>();
+        if (memberIds != null) {
+            memberIds.forEach(userId -> users.add(findUserInTenant(tenantId, userId)));
+        }
+        return users;
+    }
+
+    private void invalidateChangedMembers(Set<User> previousUsers, Set<User> desiredUsers) {
+        Set<User> changed = new LinkedHashSet<>(previousUsers);
+        changed.addAll(desiredUsers);
+        Set<User> unchanged = new LinkedHashSet<>(previousUsers);
+        unchanged.retainAll(desiredUsers);
+        changed.removeAll(unchanged);
+        changed.forEach(this::invalidateMembershipForUser);
+    }
+
+    private void invalidateMembershipForUser(User user) {
+        passwordCredentialRepository.incrementVersionForUser(user.getId());
+        user.setUpdatedAt(Instant.now());
     }
 }

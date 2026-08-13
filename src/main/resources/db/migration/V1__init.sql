@@ -411,6 +411,8 @@ CREATE TRIGGER trg_client_permissions_same_tenant
 
 CREATE INDEX idx_users_tenant_account_status ON users (tenant_id, account_status);
 CREATE INDEX idx_users_tenant_normalized_username ON users (tenant_id, normalized_username);
+CREATE INDEX idx_users_tenant_display_name_upper ON users (tenant_id, UPPER(display_name));
+CREATE INDEX idx_users_tenant_email_upper ON users (tenant_id, UPPER(email));
 CREATE INDEX idx_totp_credentials_user_id ON totp_credentials (user_id);
 CREATE INDEX idx_mfa_recovery_codes_user_unused ON mfa_recovery_codes (user_id) WHERE used_at IS NULL;
 CREATE INDEX idx_roles_tenant_id ON roles (tenant_id);
@@ -419,6 +421,7 @@ CREATE INDEX idx_role_permissions_permission_id ON role_permissions (permission_
 CREATE INDEX idx_resource_servers_tenant_id ON resource_servers (tenant_id);
 CREATE INDEX idx_resource_permissions_server_id ON resource_permissions (resource_server_id);
 CREATE INDEX idx_groups_tenant_id ON groups (tenant_id);
+CREATE INDEX idx_groups_tenant_display_name_upper ON groups (tenant_id, UPPER(display_name));
 CREATE INDEX idx_group_memberships_user_id ON group_memberships (user_id);
 CREATE INDEX idx_group_roles_role_id ON group_roles (role_id);
 CREATE INDEX idx_clients_tenant_id ON clients (tenant_id);
