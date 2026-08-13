@@ -32,7 +32,8 @@ The main local demo proves a complete application-scope flow:
 3. An OAuth2 client is allowed to request selected application permissions as
    scopes.
 4. Spring Authorization Server issues an access token after user authorization.
-5. A demo resource API allows or rejects requests based on the issued scopes.
+5. An independently running Payroll resource service validates the JWT and
+   allows or rejects requests based on issuer, audience, and scopes.
 
 ## Feature Overview
 
@@ -95,12 +96,15 @@ pairwise subject identifiers and advanced claim mapping remain future work.
 - OAuth2 clients linked to applications with selected application permissions
   allowed as requestable scopes.
 
-### Demo Resource API
+### External Demo Resource Service
 
-- Static Payroll API endpoints under `/demo-resource-api/payroll/**`.
-- Scope enforcement for `payroll.employee.read`, `payroll.salary.read`, and
+- A separate Spring Boot service under `payroll-resource-service/`, listening
+  on port 8090 with no IdentityForge runtime or database dependency.
+- Independent signature, issuer, expiration, `payroll-api` audience, and
+  endpoint-scope validation.
+- A complete local demonstration of `401`, `403`, and successful resource
+  access for `payroll.employee.read`, `payroll.salary.read`, and
   `payroll.salary.write`.
-- A complete local demonstration of allowed and denied resource access.
 
 ### Token Lifecycle and Consents
 
@@ -148,7 +152,7 @@ flowchart LR
     Auth[OAuth2 Authorization Server]
     Admin[Admin APIs]
     Model[Application / Resource Server Model]
-    Payroll[Demo Payroll Resource API]
+    Payroll[External Payroll Resource Service<br/>Spring Boot :8090]
     DB[(PostgreSQL)]
 
     Browser --> Console
@@ -156,10 +160,10 @@ flowchart LR
     Backend --> Auth
     Backend --> Admin
     Backend --> Model
-    Backend --> Payroll
     Backend --> DB
     Auth -->|JWT access token with application scopes| Console
-    Console -->|Scoped API call| Payroll
+    Console -->|Bearer JWT| Payroll
+    Payroll -.->|OIDC metadata / JWKS| Auth
 ```
 
 ```mermaid
@@ -180,7 +184,7 @@ flowchart TB
     Client --> AllowedScope[Allowed Application Scope]
     AppPermission --> AllowedScope
     AllowedScope --> Token[Access Token Scope]
-    Token --> DemoApi[Demo Payroll Resource API]
+    Token --> DemoApi[External Payroll Resource Service]
 ```
 
 System IAM permissions protect this platform's Admin APIs. Application
@@ -255,7 +259,23 @@ These credentials are created only by the `dev` profile and must never be used
 in a production environment.
 
 The frontend defaults to `http://localhost:8080` for backend calls. Set
-`VITE_API_BASE_URL` when a different local backend URL is required.
+`VITE_API_BASE_URL` when a different local backend URL is required. Its OAuth2
+Demo commands default to `http://localhost:8090` for Payroll; override that
+with `VITE_PAYROLL_API_BASE_URL`.
+
+### Start the External Payroll Resource Service
+
+After IdentityForge is running, start the independent resource server in a
+third terminal:
+
+```bash
+./mvnw -f payroll-resource-service/pom.xml spring-boot:run
+```
+
+It starts at `http://localhost:8090`; only `/api/health` is public. See the
+[external Payroll demo guide](docs/demos/external-payroll-resource-service.md)
+for signed-token commands, expected `200`/`202`/`401`/`403` outcomes, Docker,
+configuration, and tests.
 
 ## Dev Bootstrap Data
 
@@ -289,57 +309,65 @@ This walkthrough demonstrates that an access token containing
    ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
    ```
 
-3. Start the frontend in a second terminal:
+3. Start the external Payroll service in a second terminal:
+
+   ```bash
+   ./mvnw -f payroll-resource-service/pom.xml spring-boot:run
+   ```
+
+4. Start the frontend in a third terminal:
 
    ```bash
    cd frontend
    npm run dev
    ```
 
-4. Open `http://localhost:5173` and log in as
+5. Open `http://localhost:5173` and log in as
    `development/admin` / `admin123456`.
-5. Open **Applications** and verify that **Payroll API** exists.
-6. Open **OAuth2 Clients** and verify that **IdentityForge Dev Client** is
+6. Open **Applications** and verify that **Payroll API** exists.
+7. Open **OAuth2 Clients** and verify that **IdentityForge Dev Client** is
    linked to **Payroll API**.
-7. Open **OAuth2 Demo**.
-8. Select **IdentityForge Dev Client**.
-9. Select OIDC scopes such as `openid profile email groups roles`, then select
+8. Open **OAuth2 Demo**.
+9. Select **IdentityForge Dev Client**.
+10. Select OIDC scopes such as `openid profile email groups roles`, then select
    `payroll.employee.read` separately.
-10. Generate the authorization URL.
-11. Open the authorization URL.
-12. Log in and approve consent if required.
-13. Copy the returned authorization code.
-14. Exchange the code for an access token using the generated token command.
-15. Inspect the returned ID Token and call UserInfo:
+11. Generate the authorization URL.
+12. Open the authorization URL.
+13. Log in and approve consent if required.
+14. Copy the returned authorization code.
+15. Exchange the code for an access token using the generated token command.
+16. Inspect the returned ID Token and call UserInfo:
 
     ```bash
     curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
       http://localhost:8080/userinfo
     ```
 
-16. Call the employee endpoint:
+17. Call the external employee endpoint:
 
     ```bash
     curl -i \
       -H "Authorization: Bearer <ACCESS_TOKEN>" \
-      http://localhost:8080/demo-resource-api/payroll/employees
+      http://localhost:8090/api/payroll/employees
     ```
 
     Expected result: HTTP `200`.
 
-17. Call the salary endpoint with the same token:
+18. Call the salary endpoint with the same token:
 
     ```bash
     curl -i \
       -H "Authorization: Bearer <ACCESS_TOKEN>" \
-      http://localhost:8080/demo-resource-api/payroll/salaries
+      http://localhost:8090/api/payroll/salaries
     ```
 
     Expected result: HTTP `403` because `payroll.salary.read` was not
     requested.
 
-The Payroll API is intentionally an in-server static demo resource. A
-production architecture would normally protect separate resource services.
+The Payroll service contains intentionally static data, but JWT validation and
+endpoint authorization happen across a separate process boundary. A shorter
+client-credentials version is in the
+[external Payroll demo guide](docs/demos/external-payroll-resource-service.md).
 
 ## Admin Console Workflows
 
@@ -368,6 +396,8 @@ For code review and interview discussion, the repository demonstrates:
 - Scope-aware OIDC ID Token and UserInfo identity claims.
 - Scope-protected resource API behavior, including expected `200` and `403`
   outcomes.
+- External resource-server validation of IdentityForge JWT signatures, issuer,
+  audience, expiration, and application scopes.
 - Tenant-aware RBAC and effective authorization from direct and group-derived
   roles.
 - Fine-grained backend authorization for Admin API operations.
@@ -388,6 +418,8 @@ For code review and interview discussion, the repository demonstrates:
   scopes, concrete permissions, and the matching tenant boundary.
 - The implemented SCIM subset, examples, error mappings, and explicit non-goals
   are documented in [SCIM 2.0 Supported Subset](docs/protocols/scim.md).
+- The Payroll service trusts only the configured IdentityForge issuer/JWKS and
+  `payroll-api` audience; a valid admin-audience token is still rejected.
 - Interactive login identifiers use `realm/username`; tenant-local duplicate
   usernames are resolved only through the explicit realm.
 - Tenant roles cannot confer platform authority. Platform operator grants are
@@ -418,8 +450,8 @@ This project is a portfolio-grade prototype, not a production-ready IAM
 platform.
 
 - Authorization and token storage is not fully distributed production storage.
-- The Demo Payroll API is an in-server static resource API, not a real external
-  service or real payroll system.
+- The external Payroll service contains static demo data, has no persistence,
+  and is not a real payroll system.
 - MFA throttling is process-local, and enrollment/recovery-code regeneration
   rely on the short-lived Admin Console access token rather than a separate
   step-up ceremony. Distributed throttling and explicit step-up are production
@@ -440,6 +472,12 @@ Run backend tests. Docker is required for Testcontainers:
 
 ```bash
 ./mvnw test
+```
+
+Run the external resource-service signed-JWT integration tests:
+
+```bash
+./mvnw -f payroll-resource-service/pom.xml test
 ```
 
 Run the QR encoder tests and build the frontend:

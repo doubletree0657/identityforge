@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: identityforge-demo-payroll-resource-service
+
+server:
+  port: ${PAYROLL_SERVER_PORT:8090}
+
+identityforge:
+  oauth:
+    issuer: ${IDENTITYFORGE_ISSUER:http://localhost:8080}
+    # Leave empty for normal OIDC discovery. Set this when the JWKS endpoint is
+    # reachable through a different internal address, such as from Docker.
+    jwk-set-uri: ${IDENTITYFORGE_JWK_SET_URI:}
+
+payroll:
+  oauth:
+    audience: ${PAYROLL_API_AUDIENCE:payroll-api}

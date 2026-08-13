@@ -6,7 +6,7 @@ IdentityForge is a portfolio-grade Identity and Access Management platform.
 The current milestone demonstrates a working Admin Console, tenant-aware
 identity administration, backend-enforced RBAC, OAuth2 Authorization Code +
 PKCE, tenant-owned application scopes, token lifecycle foundations, consent
-management, audit logging, and a complete local scope-protected resource API
+management, audit logging, and a separate scope-protected resource-service
 demo. OIDC identity claims and a documented SCIM 2.0 provisioning subset are
 also implemented with explicit privacy and tenant boundaries.
 
@@ -117,12 +117,15 @@ more depth.
 - OAuth2 clients linked to applications with selected permissions allowed as
   requestable application scopes.
 
-### Demo Payroll Resource API
+### External Payroll Resource Service Demo
 
-- Static demo endpoints protected by `payroll.employee.read`,
+- Independently runnable Spring Boot resource server with static demo data and
+  no IdentityForge database or runtime dependency.
+- IdentityForge issuer/JWKS, `payroll-api` audience, expiration, and
+  endpoint-specific scope enforcement for `payroll.employee.read`,
   `payroll.salary.read`, and `payroll.salary.write`.
-- Complete local demonstration of successful and denied application-scope
-  access.
+- Signed-JWT integration tests and local/Admin Console walkthroughs covering
+  successful, unauthenticated, wrong-token, and insufficient-scope access.
 
 ### Refresh Token and Consent Management Foundation
 
@@ -161,8 +164,8 @@ more depth.
 - The project is not production-ready and is not intended to replace a
   production IAM platform.
 - Authorization and token storage is not fully distributed production storage.
-- The Demo Payroll API is an in-server static resource API, not a real external
-  business service.
+- The external Payroll resource service contains static demo data, has no
+  persistence, and is not a real business service.
 - MFA attempt throttling remains process-local; distributed throttling and a
   distinct step-up ceremony for recovery-code regeneration remain production
   hardening work.
@@ -189,12 +192,6 @@ more depth.
 - Harden browser session, logout, CSRF, revocation, and token lifecycle
   behavior.
 - Define production signing key, secret, and rotation practices.
-
-### Separate External Resource Service Demo
-
-- Move or duplicate the Payroll resource demo into a separate service.
-- Demonstrate resource-server JWT validation outside the IAM backend.
-- Keep the service limited to demo data and scope enforcement.
 
 ### Frontend UX Polish
 

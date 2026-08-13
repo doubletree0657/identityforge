@@ -10,6 +10,7 @@ import { useTenantContext } from '../context/TenantContext';
 import { PageHeader } from './PageHeader';
 
 const OIDC_SCOPES = ['openid', 'profile', 'email', 'groups', 'roles'];
+const PAYROLL_API_BASE_URL = (import.meta.env.VITE_PAYROLL_API_BASE_URL ?? 'http://localhost:8090').replace(/\/$/, '');
 
 export function OAuth2DemoPage() {
   const [authorizationUrl, setAuthorizationUrl] = useState('');
@@ -76,7 +77,7 @@ export function OAuth2DemoPage() {
   -d 'grant_type=authorization_code' \\
   -d 'code=<authorization-code>' \\
   -d 'redirect_uri=${redirectUri}'`);
-    setResourceCommands(resourceApiCommands(baseUrl, applicationScopes));
+    setResourceCommands(resourceApiCommands(PAYROLL_API_BASE_URL, applicationScopes));
   }
 
   function resourceApiCommands(baseUrl: string, applicationScopes: string[]) {
@@ -86,15 +87,15 @@ export function OAuth2DemoPage() {
     const commands: string[] = [
       `# Employees (${employeeStatus})
 curl -H "Authorization: Bearer <ACCESS_TOKEN>" \\
-  ${baseUrl}/demo-resource-api/payroll/employees`,
+  ${baseUrl}/api/payroll/employees`,
       `# Salaries read (${salaryReadStatus})
 curl -H "Authorization: Bearer <ACCESS_TOKEN>" \\
-  ${baseUrl}/demo-resource-api/payroll/salaries`,
+  ${baseUrl}/api/payroll/salaries`,
       `# Salaries write (${salaryWriteStatus})
 curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{}' \\
-  ${baseUrl}/demo-resource-api/payroll/salaries`,
+  ${baseUrl}/api/payroll/salaries`,
     ];
     return commands.join('\n\n');
   }
@@ -235,7 +236,7 @@ curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
             <li>Log in as admin or a test user, then approve consent if the client requires it.</li>
             <li>Copy the authorization code from the redirect URL.</li>
             <li>Exchange the code for a token with the generated curl command.</li>
-            <li>Inspect the ID Token, call UserInfo, and call the demo Payroll resource API with the returned access token.</li>
+            <li>Inspect the ID Token, call UserInfo, and call the independently running Payroll resource service with the returned access token.</li>
           </ol>
           <div className="mt-4 flex flex-wrap gap-3 text-sm">
             <Link className="font-medium text-brand hover:underline" to="/clients">Manage OAuth2 clients</Link>
@@ -260,7 +261,7 @@ curl -X POST -H "Authorization: Bearer <ACCESS_TOKEN>" \\
               </div>
               {resourceCommands && (
                 <div>
-                  <div className="text-sm font-semibold">Resource API curl commands</div>
+                  <div className="text-sm font-semibold">External Payroll service curl commands</div>
                   <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">{resourceCommands}</pre>
                 </div>
               )}

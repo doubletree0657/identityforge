@@ -223,11 +223,6 @@ class OAuth2AuthorizationCodeLoginFlowTests {
         Jwt jwt = jwtDecoder.decode(accessToken);
         assertThat(jwt.getClaimAsStringList("scope")).containsExactly("payroll.employee.read");
         assertThat(jwt.getAudience()).containsExactly("payroll-api");
-
-        mockMvc.perform(get("/demo-resource-api/payroll/employees")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].employeeId").value("E-1001"));
     }
 
     @Test
@@ -477,7 +472,7 @@ class OAuth2AuthorizationCodeLoginFlowTests {
     }
 
     @Test
-    void authorizationCodeFlowIssuesPayrollScopesThatProtectDemoResourceApi() throws Exception {
+    void authorizationCodeFlowIssuesAudienceBoundPayrollScopes() throws Exception {
         FlowFixture fixture = createFlowFixture();
         ResourceServer resourceServer = resourceServerApplicationService.createResourceServer(
                 fixture.client().client().getTenant().getId(), "payroll-api", "OAuth Payroll API Full", null);
@@ -514,40 +509,24 @@ class OAuth2AuthorizationCodeLoginFlowTests {
         Jwt employeeReadJwt = jwtDecoder.decode(employeeReadToken);
         assertThat(employeeReadJwt.getClaimAsStringList("scope")).containsExactly("payroll.employee.read");
         assertThat(employeeReadJwt.getAudience()).containsExactly("payroll-api");
-        mockMvc.perform(get("/demo-resource-api/payroll/employees")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + employeeReadToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].salaryAmount").doesNotExist());
-        mockMvc.perform(get("/demo-resource-api/payroll/salaries")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + employeeReadToken))
-                .andExpect(status().isForbidden());
 
         String salaryReadToken = authorizeAuthenticatedSessionAndExchange(
                 authenticatedSession.session(),
                 fixture.client(),
                 "payroll.salary.read",
                 "payroll-salary-read-state");
-        mockMvc.perform(get("/demo-resource-api/payroll/salaries")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + salaryReadToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].salaryAmount").value(132000.00));
-        mockMvc.perform(post("/demo-resource-api/payroll/salaries")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + salaryReadToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isForbidden());
+        Jwt salaryReadJwt = jwtDecoder.decode(salaryReadToken);
+        assertThat(salaryReadJwt.getClaimAsStringList("scope")).containsExactly("payroll.salary.read");
+        assertThat(salaryReadJwt.getAudience()).containsExactly("payroll-api");
 
         String salaryWriteToken = authorizeAuthenticatedSessionAndExchange(
                 authenticatedSession.session(),
                 fixture.client(),
                 "payroll.salary.write",
                 "payroll-salary-write-state");
-        mockMvc.perform(post("/demo-resource-api/payroll/salaries")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + salaryWriteToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("accepted"));
+        Jwt salaryWriteJwt = jwtDecoder.decode(salaryWriteToken);
+        assertThat(salaryWriteJwt.getClaimAsStringList("scope")).containsExactly("payroll.salary.write");
+        assertThat(salaryWriteJwt.getAudience()).containsExactly("payroll-api");
     }
 
     private FlowFixture createFlowFixture() {

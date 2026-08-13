@@ -152,8 +152,7 @@ public class AuthorizationServerConfiguration {
             throws Exception {
         RequestMatcher apiEndpointsMatcher = new OrRequestMatcher(
                 PathPatternRequestMatcher.withDefaults().matcher("/api/**"),
-                PathPatternRequestMatcher.withDefaults().matcher("/scim/v2/**"),
-                PathPatternRequestMatcher.withDefaults().matcher("/demo-resource-api/**"));
+                PathPatternRequestMatcher.withDefaults().matcher("/scim/v2/**"));
         RequestMatcher scimEndpointsMatcher =
                 PathPatternRequestMatcher.withDefaults().matcher("/scim/v2/**");
 
@@ -180,13 +179,6 @@ public class AuthorizationServerConfiguration {
                         .access(new AdminApiAuthorizationManager("iam.write"))
                         .requestMatchers("/scim/v2/**")
                         .access(new AdminApiAuthorizationManager("iam.read"))
-                        .requestMatchers(HttpMethod.GET, "/demo-resource-api/payroll/employees")
-                        .access(new AudienceScopeAuthorizationManager("payroll-api", "payroll.employee.read"))
-                        .requestMatchers(HttpMethod.GET, "/demo-resource-api/payroll/salaries")
-                        .access(new AudienceScopeAuthorizationManager("payroll-api", "payroll.salary.read"))
-                        .requestMatchers(HttpMethod.POST, "/demo-resource-api/payroll/salaries")
-                        .access(new AudienceScopeAuthorizationManager("payroll-api", "payroll.salary.write"))
-                        .requestMatchers("/demo-resource-api/**").authenticated()
                         .anyRequest().permitAll())
                 .formLogin(form -> form
                         .loginPage("/login")

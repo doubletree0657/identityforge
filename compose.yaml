@@ -7,3 +7,17 @@ services:
       - 'POSTGRES_USER=admin'
     ports:
       - '5432:5432'
+
+  payroll-resource-service:
+    profiles: ['payroll-demo']
+    build:
+      context: .
+      dockerfile: payroll-resource-service/Dockerfile
+    environment:
+      IDENTITYFORGE_ISSUER: http://localhost:8080
+      IDENTITYFORGE_JWK_SET_URI: http://host.docker.internal:8080/oauth2/jwks
+      PAYROLL_API_AUDIENCE: payroll-api
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    ports:
+      - '8090:8090'

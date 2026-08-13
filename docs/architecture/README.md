@@ -4,6 +4,11 @@ IdentityForge is a single-deployable modular monolith. Capability ownership is
 visible under `io.github.doubletree.iam`, and `ArchitectureTests` uses Spring
 Modulith to verify declared dependencies and reject cycles.
 
+The demo Payroll API is deliberately outside that monolith. The independent
+`payroll-resource-service` consumes only IdentityForge-issued JWT access tokens
+and public authorization-server metadata/JWKS; it does not depend on IAM domain
+classes, the IdentityForge database, or browser sessions.
+
 | Module | Ownership |
 | --- | --- |
 | `shared` | Small cross-cutting contracts, errors, actor context, and web primitives |
@@ -37,6 +42,10 @@ persistence package.
   triggers in the clean baseline.
 - Admin tokens use the `identityforge-admin-api` audience. Application tokens
   use their resource-server identifier and omit the IAM authorization graph.
+- The external Payroll service accepts only the `payroll-api` audience and
+  separately requires an endpoint-specific application scope. Signature and
+  issuer validation establish token authenticity; audience prevents token
+  confusion; scope controls the permitted Payroll operation.
 - User access tokens use immutable user IDs as subjects and include a security
   version validated against current account, tenant, password, and credential
   state.

@@ -10,7 +10,6 @@ import io.github.doubletree.iam.directory.web.RoleController;
 import io.github.doubletree.iam.directory.web.TenantController;
 import io.github.doubletree.iam.directory.web.UserController;
 import io.github.doubletree.iam.oauth.web.CurrentUserController;
-import io.github.doubletree.iam.oauth.web.DemoResourceApiController;
 import io.github.doubletree.iam.provisioning.web.ScimController;
 import io.github.doubletree.iam.provisioning.web.ScimExceptionHandler;
 import io.github.doubletree.iam.provisioning.application.ScimProvisioningService;
@@ -112,7 +111,6 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
         CurrentUserController.class,
         ScimController.class,
         ScimExceptionHandler.class,
-        DemoResourceApiController.class,
         RestExceptionHandler.class
 })
 @Import({
@@ -213,18 +211,6 @@ class CoreIamControllerTests {
                     .claim("scope", "iam.read"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.read"));
 
-    private final RequestPostProcessor employeeReadScopeJwt = jwt()
-            .jwt(token -> token.claim("scope", "payroll.employee.read").claim("aud", List.of("payroll-api")))
-            .authorities(new SimpleGrantedAuthority("SCOPE_payroll.employee.read"));
-
-    private final RequestPostProcessor salaryReadScopeJwt = jwt()
-            .jwt(token -> token.claim("scope", "payroll.salary.read").claim("aud", List.of("payroll-api")))
-            .authorities(new SimpleGrantedAuthority("SCOPE_payroll.salary.read"));
-
-    private final RequestPostProcessor salaryWriteScopeJwt = jwt()
-            .jwt(token -> token.claim("scope", "payroll.salary.write").claim("aud", List.of("payroll-api")))
-            .authorities(new SimpleGrantedAuthority("SCOPE_payroll.salary.write"));
-
     private RequestPostProcessor adminJwt(Set<String> roles, Set<String> permissions, String scope) {
         return jwt()
                 .jwt(token -> token
@@ -251,65 +237,6 @@ class CoreIamControllerTests {
     void currentUserRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/me"))
                 .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void demoResourceApiRequiresToken() throws Exception {
-        mockMvc.perform(get("/demo-resource-api/payroll/employees"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void demoResourceApiRejectsTokenWithoutEmployeeReadScope() throws Exception {
-        mockMvc.perform(get("/demo-resource-api/payroll/employees")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("SCOPE_iam.read"))))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void demoResourceApiAllowsEmployeeReadScope() throws Exception {
-        mockMvc.perform(get("/demo-resource-api/payroll/employees")
-                        .with(employeeReadScopeJwt))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].employeeId").value("E-1001"))
-                .andExpect(jsonPath("$[0].name").value("Avery Chen"))
-                .andExpect(jsonPath("$[0].department").value("Engineering"))
-                .andExpect(jsonPath("$[0].salaryAmount").doesNotExist());
-    }
-
-    @Test
-    void demoResourceApiAllowsSalaryReadScope() throws Exception {
-        mockMvc.perform(get("/demo-resource-api/payroll/salaries")
-                        .with(salaryReadScopeJwt))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].employeeId").value("E-1001"))
-                .andExpect(jsonPath("$[0].salaryAmount").value(132000.00));
-    }
-
-    @Test
-    void demoResourceApiRejectsSalaryPostWithoutWriteScope() throws Exception {
-        mockMvc.perform(post("/demo-resource-api/payroll/salaries")
-                        .with(salaryReadScopeJwt)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void demoResourceApiAllowsSalaryPostWithWriteScope() throws Exception {
-        mockMvc.perform(post("/demo-resource-api/payroll/salaries")
-                        .with(salaryWriteScopeJwt)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("accepted"));
-    }
-
-    @Test
-    void adminApiPermissionsDoNotGrantDemoResourceAccess() throws Exception {
-        mockMvc.perform(get("/demo-resource-api/payroll/employees")
-                        .with(usersReadPermissionJwt))
-                .andExpect(status().isForbidden());
     }
 
     @Test

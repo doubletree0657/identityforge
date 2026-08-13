@@ -38,6 +38,14 @@ frontend:
     - npm ci --cache .npm --prefer-offline
     - npm run build
 
+payroll-resource-service-test:
+  stage: test
+  image: eclipse-temurin:21-jdk
+  before_script:
+    - chmod +x ./mvnw
+  script:
+    - ./mvnw -f payroll-resource-service/pom.xml test
+
 package:
   stage: package
   image: eclipse-temurin:21-jdk
@@ -48,6 +56,18 @@ package:
   artifacts:
     paths:
       - target/*.jar
+    expire_in: 1 week
+
+payroll-resource-service-package:
+  stage: package
+  image: eclipse-temurin:21-jdk
+  before_script:
+    - chmod +x ./mvnw
+  script:
+    - ./mvnw -f payroll-resource-service/pom.xml package -DskipTests
+  artifacts:
+    paths:
+      - payroll-resource-service/target/*.jar
     expire_in: 1 week
 
 docker:
@@ -63,3 +83,17 @@ docker:
     - package
   script:
     - docker build --pull -t "$CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA" .
+
+payroll-resource-service-docker:
+  stage: docker
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  dependencies:
+    - payroll-resource-service-package
+  script:
+    - docker build --pull -f payroll-resource-service/Dockerfile -t "$CI_PROJECT_NAME-payroll-resource-service:$CI_COMMIT_SHORT_SHA" .
