@@ -173,7 +173,7 @@ class HttpLoginFlowTests {
         User user = createUser("http-mfa-user", PASSWORD, AccountStatus.ACTIVE);
         MfaEnrollmentResult enrollment = mfaApplicationService.enrollTotp(user.getId());
         String code = generateTotpCode(enrollment.secret());
-        assertThat(mfaApplicationService.verifyTotp(user.getId(), code)).isTrue();
+        assertThat(mfaApplicationService.verifyTotp(user.getId(), code).verified()).isTrue();
 
         MvcResult passwordResult = mockMvc.perform(formLogin().user(loginIdentifier(user.getUsername())).password(PASSWORD))
                 .andExpect(status().isFound())
@@ -206,6 +206,39 @@ class HttpLoginFlowTests {
         assertThat(auditLogRepository.findByAction("MFA_CHALLENGE_SUCCEEDED"))
                 .singleElement()
                 .satisfies(this::assertAuditLogDoesNotContainSecrets);
+    }
+
+    @Test
+    void userCanCompleteMfaChallengeWithARecoveryCodeOnlyOnce() throws Exception {
+        User user = createUser("http-recovery-user", PASSWORD, AccountStatus.ACTIVE);
+        MfaEnrollmentResult enrollment = mfaApplicationService.enrollTotp(user.getId());
+        String recoveryCode = mfaApplicationService
+                .verifyTotp(user.getId(), generateTotpCode(enrollment.secret()))
+                .recoveryCodes()
+                .getFirst();
+
+        MockHttpSession firstSession = pendingMfaSession(user);
+        mockMvc.perform(post("/login/mfa")
+                        .session(firstSession)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("code", recoveryCode))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/"))
+                .andExpect(authenticated().withUsername(user.getUsername()));
+
+        MockHttpSession secondSession = pendingMfaSession(user);
+        mockMvc.perform(post("/login/mfa")
+                        .session(secondSession)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("code", recoveryCode))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/login/mfa?error"))
+                .andExpect(unauthenticated());
+
+        assertThat(auditLogRepository.findByAction("MFA_RECOVERY_CODE_USED")).hasSize(1);
+        auditLogRepository.findByAction("MFA_RECOVERY_CODE_USED").forEach(this::assertAuditLogDoesNotContainSecrets);
     }
 
     @Test
@@ -273,6 +306,14 @@ class HttpLoginFlowTests {
         MvcResult result = mockMvc.perform(formLogin().user(loginIdentifier(username)).password(password))
                 .andExpect(status().isFound())
                 .andExpect(authenticated().withUsername(username))
+                .andReturn();
+        return (MockHttpSession) result.getRequest().getSession(false);
+    }
+
+    private MockHttpSession pendingMfaSession(User user) throws Exception {
+        MvcResult result = mockMvc.perform(formLogin().user(loginIdentifier(user.getUsername())).password(PASSWORD))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/login/mfa"))
                 .andReturn();
         return (MockHttpSession) result.getRequest().getSession(false);
     }

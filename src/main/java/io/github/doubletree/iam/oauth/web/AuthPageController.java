@@ -75,12 +75,12 @@ public class AuthPageController {
             return redirect("/login");
         }
         return html("""
-                <h1>TOTP Verification</h1>
-                <p class="lede">Enter the six-digit code from your authenticator app to finish signing in.</p>
+                <h1>MFA Verification</h1>
+                <p class="lede">Enter the six-digit code from your authenticator app, or one of your one-time recovery codes.</p>
                 %s
                 <form method="post" action="/login/mfa">
                   %s
-                  <label>Verification code<input name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus></label>
+                  <label>Authenticator or recovery code<input name="code" autocomplete="one-time-code" required autofocus></label>
                   <button type="submit">Verify</button>
                 </form>
                 """.formatted(alert(error == null ? "" : GENERIC_MFA_FAILURE), csrfInput(request)));

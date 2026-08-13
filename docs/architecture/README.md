@@ -40,6 +40,11 @@ persistence package.
 - User access tokens use immutable user IDs as subjects and include a security
   version validated against current account, tenant, password, and credential
   state.
+- TOTP secrets are encrypted at rest. Recovery codes are separate credential
+  rows containing only domain-separated keyed digests; a conditional update
+  makes successful use atomic and preserves an auditable used/remaining count.
+- Secret-bearing MFA setup is self-service. User administrators receive only
+  factor status and recovery-code counts, plus a destructive disable operation.
 - Signing keys are supplied through `SigningKeyProvider`; the development
   profile persists a local key outside source control.
 

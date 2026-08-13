@@ -3,9 +3,11 @@ package io.github.doubletree.iam.authentication.infrastructure.crypto;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Base64;
 import javax.crypto.Cipher;
+import javax.crypto.Mac;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +23,7 @@ public class SecretEncryptionService {
     private static final int GCM_TAG_BITS = 128;
 
     private final SecretKeySpec key;
+    private final SecretKeySpec recoveryCodeHashKey;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public SecretEncryptionService(@Value("${iam.security.secret-encryption-key}") String encodedKey) {
@@ -29,6 +32,7 @@ public class SecretEncryptionService {
             throw new IllegalArgumentException("Secret encryption key must be 128, 192, or 256 bits");
         }
         this.key = new SecretKeySpec(keyBytes, KEY_ALGORITHM);
+        this.recoveryCodeHashKey = deriveRecoveryCodeHashKey(keyBytes);
         Arrays.fill(keyBytes, (byte) 0);
     }
 
@@ -70,6 +74,38 @@ public class SecretEncryptionService {
             Arrays.fill(payload, (byte) 0);
             Arrays.fill(iv, (byte) 0);
             Arrays.fill(encrypted, (byte) 0);
+        }
+    }
+
+    public String recoveryCodeDigest(String normalizedCode) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(recoveryCodeHashKey);
+            byte[] digest = mac.doFinal(("identityforge:mfa-recovery:v1:" + normalizedCode)
+                    .getBytes(StandardCharsets.US_ASCII));
+            try {
+                return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+            } finally {
+                Arrays.fill(digest, (byte) 0);
+            }
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to hash MFA recovery code", exception);
+        }
+    }
+
+    private SecretKeySpec deriveRecoveryCodeHashKey(byte[] sourceKey) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(sourceKey, "HmacSHA256"));
+            byte[] derived = mac.doFinal("identityforge:mfa-recovery-hash-key:v1"
+                    .getBytes(StandardCharsets.US_ASCII));
+            try {
+                return new SecretKeySpec(derived, "HmacSHA256");
+            } finally {
+                Arrays.fill(derived, (byte) 0);
+            }
+        } catch (GeneralSecurityException exception) {
+            throw new IllegalStateException("Failed to derive MFA recovery-code hash key", exception);
         }
     }
 }

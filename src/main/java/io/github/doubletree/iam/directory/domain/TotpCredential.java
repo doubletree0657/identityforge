@@ -29,6 +29,9 @@ public class TotpCredential {
     @Column(nullable = false, length = 1024)
     private String secretCiphertext;
 
+    @Column(length = 1024)
+    private String pendingSecretCiphertext;
+
     @Column(nullable = false)
     private boolean enabled;
 
@@ -62,6 +65,20 @@ public class TotpCredential {
         this.verifiedAt = verifiedAt;
     }
 
+    public void beginReplacement(String pendingSecretCiphertext) {
+        this.pendingSecretCiphertext = pendingSecretCiphertext;
+    }
+
+    public void promotePendingSecret(Instant verifiedAt) {
+        if (pendingSecretCiphertext == null) {
+            throw new IllegalStateException("No pending TOTP secret to promote");
+        }
+        secretCiphertext = pendingSecretCiphertext;
+        pendingSecretCiphertext = null;
+        lastUsedTimeStep = null;
+        this.verifiedAt = verifiedAt;
+    }
+
     public UUID getId() {
         return id;
     }
@@ -84,6 +101,14 @@ public class TotpCredential {
 
     public void setSecretCiphertext(String secretCiphertext) {
         this.secretCiphertext = secretCiphertext;
+    }
+
+    public String getPendingSecretCiphertext() {
+        return pendingSecretCiphertext;
+    }
+
+    public void setPendingSecretCiphertext(String pendingSecretCiphertext) {
+        this.pendingSecretCiphertext = pendingSecretCiphertext;
     }
 
     public boolean isEnabled() {

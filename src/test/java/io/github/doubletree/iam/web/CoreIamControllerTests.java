@@ -34,6 +34,9 @@ import io.github.doubletree.iam.shared.exception.PasswordValidationException;
 import io.github.doubletree.iam.shared.exception.ValidationException;
 import io.github.doubletree.iam.applications.api.ClientSecretResult;
 import io.github.doubletree.iam.authentication.api.MfaEnrollmentResult;
+import io.github.doubletree.iam.authentication.api.MfaRecoveryCodesResult;
+import io.github.doubletree.iam.authentication.api.MfaStatus;
+import io.github.doubletree.iam.authentication.api.MfaVerificationResult;
 import io.github.doubletree.iam.oauth.infrastructure.AuthorizationServerConfiguration;
 import io.github.doubletree.iam.oauth.infrastructure.FileSigningKeyProvider;
 import io.github.doubletree.iam.authentication.application.UserSecurityStateService;
@@ -82,6 +85,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
@@ -1493,10 +1497,17 @@ class CoreIamControllerTests {
         when(mfaApplicationService.enrollTotp(eq(USER_ID)))
                 .thenReturn(new MfaEnrollmentResult(USER_ID, "BASE32SECRET"));
         when(mfaApplicationService.verifyTotp(eq(USER_ID), eq("123456")))
-                .thenReturn(true);
+                .thenReturn(new MfaVerificationResult(USER_ID, true, List.of("ABCD-EFGH-JKLM-NPQR")));
+        when(mfaApplicationService.getStatus(eq(USER_ID)))
+                .thenReturn(
+                        new MfaStatus(USER_ID, true, true, false, 10, 10),
+                        new MfaStatus(USER_ID, false, false, false, 0, 0));
+        when(mfaApplicationService.regenerateRecoveryCodes(eq(USER_ID)))
+                .thenReturn(new MfaRecoveryCodesResult(USER_ID, List.of("WXYZ-2345-6789-ABCD")));
 
         mockMvc.perform(post("/api/users/{userId}/mfa/totp/enrollment", USER_ID).with(writeScopeJwt))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
                 .andExpect(jsonPath("$.userId").value(USER_ID.toString()))
                 .andExpect(jsonPath("$.secret").value("BASE32SECRET"))
                 .andExpect(jsonPath("$.secretCiphertext").doesNotExist());
@@ -1507,9 +1518,26 @@ class CoreIamControllerTests {
                                 {"code":"123456"}
                                 """))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
                 .andExpect(jsonPath("$.verified").value(true))
+                .andExpect(jsonPath("$.recoveryCodes[0]").value("ABCD-EFGH-JKLM-NPQR"))
                 .andExpect(jsonPath("$.secret").doesNotExist())
                 .andExpect(jsonPath("$.secretCiphertext").doesNotExist());
+        mockMvc.perform(get("/api/users/{userId}/mfa/totp", USER_ID).with(readScopeJwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totpVerified").value(true))
+                .andExpect(jsonPath("$.recoveryCodesRemaining").value(10))
+                .andExpect(jsonPath("$.secret").doesNotExist());
+        mockMvc.perform(post("/api/users/{userId}/mfa/totp/recovery-codes", USER_ID).with(writeScopeJwt))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
+                .andExpect(jsonPath("$.recoveryCodes[0]").value("WXYZ-2345-6789-ABCD"))
+                .andExpect(jsonPath("$.codeHash").doesNotExist());
+        mockMvc.perform(delete("/api/users/{userId}/mfa/totp", USER_ID).with(writeScopeJwt))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totpEnrolled").value(false))
+                .andExpect(jsonPath("$.recoveryCodesRemaining").value(0));
+        verify(mfaApplicationService).disableTotp(USER_ID);
     }
 
     @Test

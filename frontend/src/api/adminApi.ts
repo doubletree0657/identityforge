@@ -6,6 +6,7 @@ import {
   ClientType,
   GroupResponse,
   MfaEnrollmentResponse,
+  MfaRecoveryCodesResponse,
   MfaStatusResponse,
   OAuth2ConsentResponse,
   PageResponse,
@@ -163,10 +164,13 @@ export const adminApi = {
       apiRequest<void>('DELETE', `/api/oauth2/consents/me/${encodeURIComponent(clientId)}`),
   },
   mfa: {
+    status: (userId: string) => apiRequest<MfaStatusResponse>('GET', `/api/users/${userId}/mfa/totp`),
     enrollTotp: (userId: string) => apiRequest<MfaEnrollmentResponse>('POST', `/api/users/${userId}/mfa/totp/enrollment`),
     verifyTotp: (userId: string, code: string) =>
       apiRequest<TotpVerificationResponse>('POST', `/api/users/${userId}/mfa/totp/verification`, { code }),
     disableTotp: (userId: string) => apiRequest<MfaStatusResponse>('DELETE', `/api/users/${userId}/mfa/totp`),
+    regenerateRecoveryCodes: (userId: string) =>
+      apiRequest<MfaRecoveryCodesResponse>('POST', `/api/users/${userId}/mfa/totp/recovery-codes`),
   },
   auditLogs: {
     list: (params?: QueryParams) =>

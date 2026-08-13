@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { Save, Trash2 } from 'lucide-react';
@@ -7,9 +7,9 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field, Input, Select } from '../components/Form';
-import { SecretNotice } from '../components/SecretNotice';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
+import { useAuth } from '../context/AuthContext';
 import { AccountStatus, UserAttributeValueType } from '../types/api';
 import { compact, formatDate } from '../utils/format';
 import { PageHeader } from './PageHeader';
@@ -17,8 +17,7 @@ import { PageHeader } from './PageHeader';
 export function UserDetailPage() {
   const { userId = '' } = useParams();
   const queryClient = useQueryClient();
-  const [totpSecret, setTotpSecret] = useState('');
-  const [totpUri, setTotpUri] = useState('');
+  const { user: currentUser, hasPermission } = useAuth();
 
   const user = useQuery({ queryKey: ['user', userId], queryFn: () => adminApi.users.get(userId), enabled: !!userId });
   const profile = useQuery({ queryKey: ['user-profile', userId], queryFn: () => adminApi.users.profile(userId), enabled: !!userId });
@@ -37,6 +36,11 @@ export function UserDetailPage() {
     queryKey: ['audit-logs-for-user-detail', userId, user.data?.tenantId],
     queryFn: () => adminApi.auditLogs.list({ tenantId: user.data!.tenantId, resourceType: 'USER', resourceId: userId, size: 10 }),
     enabled: !!userId && !!user.data?.tenantId,
+  });
+  const mfaStatus = useQuery({
+    queryKey: ['mfa-status', userId],
+    queryFn: () => adminApi.mfa.status(userId),
+    enabled: !!userId && hasPermission('iam.mfa.manage'),
   });
 
   const updateUser = useMutation({
@@ -80,15 +84,10 @@ export function UserDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['groups'] });
     },
   });
-  const enrollTotp = useMutation({
-    mutationFn: () => adminApi.mfa.enrollTotp(userId),
-    onSuccess: (result) => {
-      setTotpSecret(result.secret);
-      setTotpUri(result.otpauthUri ?? '');
-    },
+  const disableTotp = useMutation({
+    mutationFn: () => adminApi.mfa.disableTotp(userId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mfa-status', userId] }),
   });
-  const verifyTotp = useMutation({ mutationFn: (code: string) => adminApi.mfa.verifyTotp(userId, code) });
-  const disableTotp = useMutation({ mutationFn: () => adminApi.mfa.disableTotp(userId) });
 
   function onUpdateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -311,31 +310,28 @@ export function UserDetailPage() {
         </Card>
         <Card title="TOTP MFA">
           <div className="grid gap-3">
-            <Button onClick={() => enrollTotp.mutate()}>Enroll TOTP</Button>
-            {totpSecret && (
+            {mfaStatus.isLoading && <LoadingState label="Loading MFA status" />}
+            {mfaStatus.data && (
               <>
-                <SecretNotice title="TOTP setup secret" secret={totpSecret} />
-                {totpUri && <SecretNotice title="otpauth URI" secret={totpUri} />}
+                <div className="flex flex-wrap gap-2">
+                  <Badge>{mfaStatus.data.enrollmentPending ? 'SETUP PENDING' : mfaStatus.data.totpVerified ? 'MFA ACTIVE' : 'NOT ENROLLED'}</Badge>
+                  {mfaStatus.data.totpVerified && <Badge>{`${mfaStatus.data.recoveryCodesRemaining} RECOVERY CODES LEFT`}</Badge>}
+                </div>
                 <p className="text-sm text-slate-600">
-                  Add the setup secret or URI to Google Authenticator, Microsoft Authenticator, or 1Password, then verify with the current six-digit code. The placeholder 123456 usually fails unless it is the current code.
+                  Setup secrets and recovery codes are self-service only. Administrators can review status and disable a lost or compromised factor without seeing credential material.
                 </p>
+                {currentUser?.userId === userId ? (
+                  <Link className="text-sm font-medium text-brand hover:underline" to="/mfa">Manage your MFA setup</Link>
+                ) : (
+                  <Button
+                    variant="danger"
+                    disabled={!mfaStatus.data.totpEnrolled || disableTotp.isPending}
+                    onClick={() => window.confirm('Disable this user’s MFA and revoke all recovery codes?') && disableTotp.mutate()}
+                  >Disable MFA</Button>
+                )}
               </>
             )}
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                verifyTotp.mutate(String(new FormData(event.currentTarget).get('code') ?? ''));
-              }}
-              className="flex gap-2"
-            >
-              <Input name="code" placeholder="123456" />
-              <Button type="submit" variant="secondary">Verify</Button>
-            </form>
-            {verifyTotp.data && <Badge>{verifyTotp.data.verified ? 'VERIFIED' : 'INVALID'}</Badge>}
-            <Button variant="danger" onClick={() => disableTotp.mutate()}>Disable TOTP</Button>
-            {(enrollTotp.isError || verifyTotp.isError || disableTotp.isError) && (
-              <ErrorState error={enrollTotp.error ?? verifyTotp.error ?? disableTotp.error} />
-            )}
+            {(mfaStatus.isError || disableTotp.isError) && <ErrorState error={mfaStatus.error ?? disableTotp.error} />}
           </div>
         </Card>
         <Card

@@ -111,8 +111,10 @@ pairwise subject identifiers and advanced claim mapping remain future work.
 
 ### Security and Audit
 
-- TOTP MFA enrollment and verification foundation with encrypted secret
-  storage.
+- TOTP MFA enrollment with encrypted secrets, standards-compatible QR setup,
+  login challenges, replay prevention, and attempt throttling.
+- Ten high-entropy recovery codes issued after factor verification, stored only
+  as keyed digests, shown once, consumed atomically, and replaceable as a set.
 - Audit events for identity administration, authentication, consent, token
   lifecycle, and other security-sensitive actions.
 - Safe DTOs and one-time secret display rules that avoid exposing password
@@ -351,7 +353,8 @@ UUID copy/paste:
 - Review direct, group-derived, and effective roles and permissions.
 - Define application permissions and allow selected permissions as OAuth2
   client scopes.
-- Manage TOTP actions, OAuth2 consents, and audit log review.
+- Manage personal TOTP setup and recovery codes, review or disable user MFA,
+  manage OAuth2 consents, and review audit logs.
 - Use **IAM Workflow** and **OAuth2 Demo** as guided portfolio demonstrations.
 
 ## What This Project Demonstrates
@@ -390,6 +393,11 @@ For code review and interview discussion, the repository demonstrates:
   `/login/mfa`, and `/oauth2/consent`.
 - Confidential client secrets are shown only on creation or rotation.
 - TOTP setup secrets and `otpauth://` URIs are shown only during enrollment.
+- Recovery-code plaintext is returned only after initial TOTP verification or
+  explicit regeneration. Status and audit APIs expose counts/events only.
+- TOTP enrollment and recovery-code generation are self-service boundaries;
+  administrators may inspect status and disable a factor without receiving its
+  credential material.
 - The default admin credentials, demo client secret, signing configuration,
   Compose credentials, and browser token storage model are for local
   development only.
@@ -407,7 +415,10 @@ platform.
 - Authorization and token storage is not fully distributed production storage.
 - The Demo Payroll API is an in-server static resource API, not a real external
   service or real payroll system.
-- MFA UX needs QR code and recovery code polish.
+- MFA throttling is process-local, and enrollment/recovery-code regeneration
+  rely on the short-lived Admin Console access token rather than a separate
+  step-up ceremony. Distributed throttling and explicit step-up are production
+  hardening work.
 - Pairwise OIDC subject identifiers and advanced claim transformation remain
   future work.
 - SCIM provisioning needs broader protocol and workflow polish.
@@ -424,10 +435,11 @@ Run backend tests. Docker is required for Testcontainers:
 ./mvnw test
 ```
 
-Build the frontend:
+Run the QR encoder tests and build the frontend:
 
 ```bash
 cd frontend
+npm test
 npm run build
 ```
 

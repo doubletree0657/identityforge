@@ -176,11 +176,21 @@ export interface MfaEnrollmentResponse {
 export interface TotpVerificationResponse {
   userId: string;
   verified: boolean;
+  recoveryCodes: string[];
 }
 
 export interface MfaStatusResponse {
   userId: string;
-  totpEnabled: boolean;
+  totpEnrolled: boolean;
+  totpVerified: boolean;
+  enrollmentPending: boolean;
+  recoveryCodesRemaining: number;
+  recoveryCodesTotal: number;
+}
+
+export interface MfaRecoveryCodesResponse {
+  userId: string;
+  recoveryCodes: string[];
 }
 
 export interface AuditLogResponse {

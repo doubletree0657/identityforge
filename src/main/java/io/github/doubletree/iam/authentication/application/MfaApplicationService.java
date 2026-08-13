@@ -3,11 +3,16 @@ import io.github.doubletree.iam.audit.application.AuditApplicationService;
 
 import io.github.doubletree.iam.shared.exception.EntityNotFoundException;
 import io.github.doubletree.iam.authentication.api.MfaEnrollmentResult;
+import io.github.doubletree.iam.authentication.api.MfaRecoveryCodesResult;
+import io.github.doubletree.iam.authentication.api.MfaStatus;
+import io.github.doubletree.iam.authentication.api.MfaVerificationResult;
+import io.github.doubletree.iam.directory.domain.MfaRecoveryCode;
 import io.github.doubletree.iam.directory.domain.TotpCredential;
 import io.github.doubletree.iam.directory.domain.User;
 import io.github.doubletree.iam.directory.infrastructure.persistence.TotpCredentialRepository;
 import io.github.doubletree.iam.directory.infrastructure.persistence.UserRepository;
 import io.github.doubletree.iam.directory.infrastructure.persistence.PasswordCredentialRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.MfaRecoveryCodeRepository;
 import io.github.doubletree.iam.directory.access.application.AdminAuthorizationService;
 import io.github.doubletree.iam.authentication.infrastructure.crypto.SecretEncryptionService;
 import java.nio.ByteBuffer;
@@ -17,12 +22,15 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.Clock;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.UriUtils;
 
 @Service
 public class MfaApplicationService {
@@ -30,6 +38,8 @@ public class MfaApplicationService {
     private static final String BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
     private static final int TOTP_TIME_STEP_SECONDS = 30;
     private static final int TOTP_DIGITS = 6;
+    private static final int RECOVERY_CODE_COUNT = 10;
+    private static final int RECOVERY_CODE_BYTES = 10;
 
     private final UserRepository userRepository;
     private final TotpCredentialRepository totpCredentialRepository;
@@ -39,6 +49,7 @@ public class MfaApplicationService {
     private final Clock clock;
     private final MfaAttemptGuard attemptGuard;
     private final PasswordCredentialRepository passwordCredentialRepository;
+    private final MfaRecoveryCodeRepository recoveryCodeRepository;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public MfaApplicationService(
@@ -49,7 +60,8 @@ public class MfaApplicationService {
             AdminAuthorizationService adminAuthorizationService,
             org.springframework.beans.factory.ObjectProvider<Clock> clock,
             org.springframework.beans.factory.ObjectProvider<MfaAttemptGuard> attemptGuard,
-            PasswordCredentialRepository passwordCredentialRepository) {
+            PasswordCredentialRepository passwordCredentialRepository,
+            MfaRecoveryCodeRepository recoveryCodeRepository) {
         this.userRepository = userRepository;
         this.totpCredentialRepository = totpCredentialRepository;
         this.auditApplicationService = auditApplicationService;
@@ -58,6 +70,7 @@ public class MfaApplicationService {
         this.clock = clock.getIfAvailable(Clock::systemUTC);
         this.attemptGuard = attemptGuard.getIfAvailable();
         this.passwordCredentialRepository = passwordCredentialRepository;
+        this.recoveryCodeRepository = recoveryCodeRepository;
     }
 
     @Transactional
@@ -68,16 +81,28 @@ public class MfaApplicationService {
         String secretCiphertext = secretEncryptionService.encrypt(secret);
 
         // Development-level protection only: production systems should use secure external key management.
-        TotpCredential credential = totpCredentialRepository.findByUserId(user.getId())
-                .orElseGet(() -> TotpCredential.create(user, secretCiphertext));
-        credential.setSecretCiphertext(secretCiphertext);
-        credential.setEnabled(true);
-        credential.setVerifiedAt(null);
-        credential.setLastUsedTimeStep(null);
+        TotpCredential credential = totpCredentialRepository.findByUserId(user.getId()).orElse(null);
+        boolean replacingVerifiedFactor = credential != null
+                && credential.isEnabled()
+                && credential.getVerifiedAt() != null;
+        if (credential == null) {
+            credential = TotpCredential.create(user, secretCiphertext);
+        } else if (replacingVerifiedFactor) {
+            credential.beginReplacement(secretCiphertext);
+        } else {
+            credential.setSecretCiphertext(secretCiphertext);
+            credential.setPendingSecretCiphertext(null);
+            credential.setEnabled(true);
+            credential.setVerifiedAt(null);
+            credential.setLastUsedTimeStep(null);
+        }
         TotpCredential savedCredential = totpCredentialRepository.save(credential);
-        passwordCredentialRepository.incrementVersionForUser(userId);
 
-        auditApplicationService.recordEvent(user.getTenant().getId(), "MFA_ENROLLED", "USER", user.getId());
+        auditApplicationService.recordEvent(
+                user.getTenant().getId(),
+                replacingVerifiedFactor ? "MFA_REENROLLMENT_STARTED" : "MFA_ENROLLED",
+                "USER",
+                user.getId());
         return new MfaEnrollmentResult(
                 savedCredential.getUser().getId(),
                 secret,
@@ -85,8 +110,18 @@ public class MfaApplicationService {
     }
 
     @Transactional
-    public boolean verifyTotp(UUID userId, String code) {
+    public MfaVerificationResult verifyTotp(UUID userId, String code) {
         User requestedUser = findUser(userId);
+        assertSelfEnrollment(userId);
+        if (attemptGuard != null && !attemptGuard.isAllowed(userId)) {
+            auditApplicationService.recordFailure(
+                    requestedUser.getTenant().getId(),
+                    "MFA_VERIFY_THROTTLED",
+                    "USER",
+                    userId,
+                    "ATTEMPT_LIMIT_EXCEEDED");
+            return new MfaVerificationResult(userId, false, List.of());
+        }
         TotpCredential credential = totpCredentialRepository.findByUserId(userId).orElse(null);
         if (credential == null || !credential.isEnabled() || credential.getSecretCiphertext() == null) {
             auditApplicationService.recordFailure(
@@ -95,18 +130,39 @@ public class MfaApplicationService {
                     "USER",
                     userId,
                     "FACTOR_UNAVAILABLE");
-            return false;
+            return new MfaVerificationResult(userId, false, List.of());
         }
 
-        String secret = secretEncryptionService.decrypt(credential.getSecretCiphertext());
+        boolean replacingFactor = credential.getPendingSecretCiphertext() != null;
+        boolean activatingNewFactor = replacingFactor || credential.getVerifiedAt() == null;
+        String secret = secretEncryptionService.decrypt(replacingFactor
+                ? credential.getPendingSecretCiphertext()
+                : credential.getSecretCiphertext());
         boolean valid = matchingTimeStep(secret, code, clock.instant()) != null;
+        List<String> recoveryCodes = List.of();
         if (valid) {
-            credential.markVerified(clock.instant());
+            if (replacingFactor) {
+                credential.promotePendingSecret(clock.instant());
+            } else {
+                credential.markVerified(clock.instant());
+            }
             totpCredentialRepository.save(credential);
             User user = credential.getUser();
+            if (activatingNewFactor) {
+                recoveryCodes = replaceRecoveryCodes(user);
+                passwordCredentialRepository.incrementVersionForUser(userId);
+                auditApplicationService.recordEvent(
+                        user.getTenant().getId(), "MFA_RECOVERY_CODES_GENERATED", "USER", user.getId());
+            }
+            if (attemptGuard != null) {
+                attemptGuard.reset(userId);
+            }
             auditApplicationService.recordEvent(user.getTenant().getId(), "MFA_VERIFIED", "USER", user.getId());
         }
         if (!valid) {
+            if (attemptGuard != null) {
+                attemptGuard.recordFailure(userId);
+            }
             auditApplicationService.recordFailure(
                     credential.getUser().getTenant().getId(),
                     "MFA_VERIFY_FAILED",
@@ -114,7 +170,35 @@ public class MfaApplicationService {
                     userId,
                     "INVALID_CODE");
         }
-        return valid;
+        return new MfaVerificationResult(userId, valid, recoveryCodes);
+    }
+
+    @Transactional(readOnly = true)
+    public MfaStatus getStatus(UUID userId) {
+        findUser(userId);
+        TotpCredential credential = totpCredentialRepository.findByUserId(userId).orElse(null);
+        return new MfaStatus(
+                userId,
+                credential != null && credential.isEnabled(),
+                credential != null && credential.isEnabled() && credential.getVerifiedAt() != null,
+                credential != null && (credential.getVerifiedAt() == null
+                        || credential.getPendingSecretCiphertext() != null),
+                recoveryCodeRepository.countByUserIdAndUsedAtIsNull(userId),
+                recoveryCodeRepository.countByUserId(userId));
+    }
+
+    @Transactional
+    public MfaRecoveryCodesResult regenerateRecoveryCodes(UUID userId) {
+        User user = findUser(userId);
+        assertSelfEnrollment(userId);
+        if (!requiresTotpChallenge(userId)) {
+            throw new io.github.doubletree.iam.shared.exception.ValidationException(
+                    "Verify TOTP before generating recovery codes");
+        }
+        List<String> recoveryCodes = replaceRecoveryCodes(user);
+        auditApplicationService.recordEvent(
+                user.getTenant().getId(), "MFA_RECOVERY_CODES_REGENERATED", "USER", user.getId());
+        return new MfaRecoveryCodesResult(userId, recoveryCodes);
     }
 
     @Transactional(readOnly = true)
@@ -150,16 +234,26 @@ public class MfaApplicationService {
         }
 
         String secret = secretEncryptionService.decrypt(credential.getSecretCiphertext());
-        Long matchedTimeStep = matchingTimeStep(secret, code, clock.instant());
-        boolean valid = matchedTimeStep != null
+        Long matchedTimeStep = isTotpCode(code) ? matchingTimeStep(secret, code, clock.instant()) : null;
+        boolean validTotp = matchedTimeStep != null
                 && (credential.getLastUsedTimeStep() == null
                         || matchedTimeStep > credential.getLastUsedTimeStep());
-        if (valid) {
+        boolean replayedTotp = matchedTimeStep != null && !validTotp;
+        boolean validRecoveryCode = !isTotpCode(code) && consumeRecoveryCode(userId, code);
+        if (validTotp) {
             credential.setLastUsedTimeStep(matchedTimeStep);
             totpCredentialRepository.save(credential);
             if (attemptGuard != null) {
                 attemptGuard.reset(userId);
             }
+            auditApplicationService.recordEvent(
+                    credential.getUser().getTenant().getId(), "MFA_CHALLENGE_SUCCEEDED", "USER", userId);
+        } else if (validRecoveryCode) {
+            if (attemptGuard != null) {
+                attemptGuard.reset(userId);
+            }
+            auditApplicationService.recordEvent(
+                    credential.getUser().getTenant().getId(), "MFA_RECOVERY_CODE_USED", "USER", userId);
             auditApplicationService.recordEvent(
                     credential.getUser().getTenant().getId(), "MFA_CHALLENGE_SUCCEEDED", "USER", userId);
         } else {
@@ -171,14 +265,15 @@ public class MfaApplicationService {
                     "MFA_CHALLENGE_FAILED",
                     "USER",
                     userId,
-                    matchedTimeStep == null ? "INVALID_CODE" : "CODE_REPLAYED");
+                    replayedTotp ? "CODE_REPLAYED" : "INVALID_CODE");
         }
-        return valid;
+        return validTotp || validRecoveryCode;
     }
 
     @Transactional
     public void disableTotp(UUID userId) {
         User user = findUser(userId);
+        revokeRecoveryCodes(user);
         totpCredentialRepository.deleteByUserId(userId);
         passwordCredentialRepository.incrementVersionForUser(userId);
 
@@ -250,10 +345,85 @@ public class MfaApplicationService {
         return encodeBase32(bytes);
     }
 
+    private List<String> replaceRecoveryCodes(User user) {
+        recoveryCodeRepository.deleteByUserId(user.getId());
+        recoveryCodeRepository.flush();
+        List<String> plaintextCodes = new ArrayList<>(RECOVERY_CODE_COUNT);
+        List<MfaRecoveryCode> storedCodes = new ArrayList<>(RECOVERY_CODE_COUNT);
+        for (int index = 0; index < RECOVERY_CODE_COUNT; index++) {
+            String code = generateRecoveryCode();
+            plaintextCodes.add(code);
+            storedCodes.add(MfaRecoveryCode.create(user, recoveryCodeDigest(code)));
+        }
+        recoveryCodeRepository.saveAll(storedCodes);
+        return List.copyOf(plaintextCodes);
+    }
+
+    private void revokeRecoveryCodes(User user) {
+        if (recoveryCodeRepository.countByUserId(user.getId()) > 0) {
+            recoveryCodeRepository.deleteByUserId(user.getId());
+            auditApplicationService.recordEvent(
+                    user.getTenant().getId(), "MFA_RECOVERY_CODES_REVOKED", "USER", user.getId());
+        }
+    }
+
+    private boolean consumeRecoveryCode(UUID userId, String code) {
+        String normalized = normalizeRecoveryCode(code);
+        if (normalized == null) {
+            return false;
+        }
+        return recoveryCodeRepository.markUsedIfAvailable(
+                userId, secretEncryptionService.recoveryCodeDigest(normalized), clock.instant()) == 1;
+    }
+
+    private String recoveryCodeDigest(String code) {
+        return secretEncryptionService.recoveryCodeDigest(code.replace("-", ""));
+    }
+
+    private String generateRecoveryCode() {
+        byte[] bytes = new byte[RECOVERY_CODE_BYTES];
+        secureRandom.nextBytes(bytes);
+        String compact = encodeBase32(bytes);
+        Arrays.fill(bytes, (byte) 0);
+        return compact.substring(0, 4) + "-" + compact.substring(4, 8) + "-"
+                + compact.substring(8, 12) + "-" + compact.substring(12, 16);
+    }
+
+    private String normalizeRecoveryCode(String code) {
+        if (code == null) {
+            return null;
+        }
+        String normalized = code.replace("-", "").replace(" ", "").toUpperCase(Locale.ROOT);
+        if (normalized.length() != 16
+                || normalized.chars().anyMatch(character -> BASE32_ALPHABET.indexOf(character) < 0)) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private boolean isTotpCode(String code) {
+        return code != null && code.length() == TOTP_DIGITS && code.chars().allMatch(Character::isDigit);
+    }
+
     private String otpauthUri(User user, String secret) {
-        return "otpauth://totp/IdentityForge:" + user.getUsername()
+        String label = "IdentityForge:" + user.getTenant().getSlug() + "/" + user.getUsername();
+        return "otpauth://totp/" + qrSafeLabel(label)
                 + "?secret=" + secret
                 + "&issuer=IdentityForge&algorithm=SHA1&digits=6&period=30";
+    }
+
+    private String qrSafeLabel(String label) {
+        StringBuilder shortened = new StringBuilder();
+        for (int offset = 0; offset < label.length();) {
+            int codePoint = label.codePointAt(offset);
+            String candidate = shortened.toString() + new String(Character.toChars(codePoint));
+            if (UriUtils.encodePath(candidate, StandardCharsets.UTF_8).length() > 72) {
+                break;
+            }
+            shortened.appendCodePoint(codePoint);
+            offset += Character.charCount(codePoint);
+        }
+        return UriUtils.encodePath(shortened.toString(), StandardCharsets.UTF_8);
     }
 
     private String encodeBase32(byte[] bytes) {

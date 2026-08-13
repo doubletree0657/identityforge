@@ -66,6 +66,15 @@ more depth.
 - Self-enrollment boundaries, attempt throttling, and time-step replay
   prevention.
 
+### MFA QR Code and Recovery Codes
+
+- Standards-compatible QR presentation for the one-time TOTP provisioning URI.
+- Ten high-entropy recovery codes generated only after TOTP verification,
+  displayed once, stored as keyed digests, and consumed atomically.
+- Recovery-code status, full-set regeneration, revocation on factor replacement
+  or disable, login fallback, attempt throttling, and non-sensitive audit events.
+- Self-service secret boundaries with administrator-only status and disable UX.
+
 ### Tenant-Aware RBAC and Effective Permissions
 
 - Tenant-scoped roles and group membership.
@@ -142,7 +151,9 @@ more depth.
 - Authorization and token storage is not fully distributed production storage.
 - The Demo Payroll API is an in-server static resource API, not a real external
   business service.
-- MFA UX needs QR code and recovery code polish.
+- MFA attempt throttling remains process-local; distributed throttling and a
+  distinct step-up ceremony for recovery-code regeneration remain production
+  hardening work.
 - Pairwise subject identifiers and advanced claim transformation remain future
   work.
 - SCIM-style provisioning needs broader protocol and workflow polish.
@@ -158,12 +169,6 @@ more depth.
 - Add current screenshots and a concise visual demo narrative.
 - Keep README walkthroughs aligned with the implemented Admin Console.
 - Improve reviewer orientation without overstating product maturity.
-
-### MFA QR Code and Recovery Codes
-
-- Add QR code presentation for TOTP enrollment.
-- Design recovery code generation, storage, one-time use, and audit behavior.
-- Improve administrator and end-user MFA guidance.
 
 ### SCIM Provisioning Polish
 

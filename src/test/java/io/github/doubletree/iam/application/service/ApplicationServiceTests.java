@@ -47,6 +47,7 @@ import io.github.doubletree.iam.applications.infrastructure.persistence.Resource
 import io.github.doubletree.iam.directory.infrastructure.persistence.RoleRepository;
 import io.github.doubletree.iam.directory.infrastructure.persistence.TenantRepository;
 import io.github.doubletree.iam.directory.infrastructure.persistence.TotpCredentialRepository;
+import io.github.doubletree.iam.directory.infrastructure.persistence.MfaRecoveryCodeRepository;
 import io.github.doubletree.iam.directory.infrastructure.persistence.UserRepository;
 import io.github.doubletree.iam.authentication.infrastructure.PasswordEncodingConfiguration;
 import io.github.doubletree.iam.directory.access.application.AdminAuthorizationService;
@@ -171,6 +172,9 @@ class ApplicationServiceTests {
     @Autowired
     private TotpCredentialRepository totpCredentialRepository;
 
+    @Autowired
+    private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
+
     @DynamicPropertySource
     static void registerDataSourceProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -293,6 +297,11 @@ class ApplicationServiceTests {
         TotpCredential credential = totpCredentialRepository.findByUserId(user.getId()).orElseThrow();
         assertThat(enrollment.userId()).isEqualTo(user.getId());
         assertThat(enrollment.secret()).isNotBlank();
+        assertThat(enrollment.otpauthUri())
+                .startsWith("otpauth://totp/IdentityForge:mfa-enrollment-tenant/mfa-user")
+                .contains("secret=" + enrollment.secret(), "issuer=IdentityForge", "algorithm=SHA1", "digits=6");
+        assertThat(enrollment.otpauthUri().getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                .isLessThanOrEqualTo(192);
         assertThat(loadedUser.getClass().getDeclaredFields())
                 .extracting("name")
                 .doesNotContain("mfaSecret", "mfaEnabled");
@@ -308,7 +317,15 @@ class ApplicationServiceTests {
         MfaEnrollmentResult enrollment = mfaApplicationService.enrollTotp(user.getId());
         String code = mfaApplicationService.generateTotpCode(enrollment.secret(), Instant.now());
 
-        assertThat(mfaApplicationService.verifyTotp(user.getId(), code)).isTrue();
+        var verification = mfaApplicationService.verifyTotp(user.getId(), code);
+
+        assertThat(verification.verified()).isTrue();
+        assertThat(verification.recoveryCodes()).hasSize(10).doesNotHaveDuplicates();
+        assertThat(verification.recoveryCodes()).allMatch(value -> value.matches("[A-Z2-7]{4}(-[A-Z2-7]{4}){3}"));
+        assertThat(mfaRecoveryCodeRepository.countByUserId(user.getId())).isEqualTo(10);
+        verification.recoveryCodes().forEach(plaintext -> assertThat(mfaRecoveryCodeRepository.findAll())
+                .extracting("codeHash")
+                .doesNotContain(plaintext, plaintext.replace("-", "")));
     }
 
     @Test
@@ -319,7 +336,81 @@ class ApplicationServiceTests {
         String validCode = mfaApplicationService.generateTotpCode(enrollment.secret(), Instant.now());
         String invalidCode = validCode.equals("000000") ? "000001" : "000000";
 
-        assertThat(mfaApplicationService.verifyTotp(user.getId(), invalidCode)).isFalse();
+        assertThat(mfaApplicationService.verifyTotp(user.getId(), invalidCode).verified()).isFalse();
+    }
+
+    @Test
+    void recoveryCodeCanBeUsedOnlyOnceAndStatusNeverReturnsIt() {
+        Tenant tenant = tenantApplicationService.createTenant("MFA Recovery Tenant");
+        User user = userApplicationService.createUser(tenant.getId(), "recovery-user", "Recovery User");
+        MfaEnrollmentResult enrollment = mfaApplicationService.enrollTotp(user.getId());
+        String totp = mfaApplicationService.generateTotpCode(enrollment.secret(), Instant.now());
+        String recoveryCode = mfaApplicationService.verifyTotp(user.getId(), totp).recoveryCodes().getFirst();
+
+        assertThat(mfaApplicationService.verifyTotpChallenge(user.getId(), recoveryCode)).isTrue();
+        assertThat(mfaApplicationService.verifyTotpChallenge(user.getId(), recoveryCode)).isFalse();
+        assertThat(mfaApplicationService.getStatus(user.getId()).recoveryCodesRemaining()).isEqualTo(9);
+        assertThat(mfaApplicationService.getStatus(user.getId()).toString()).doesNotContain(recoveryCode);
+        assertThat(auditLogRepository.findByAction("MFA_RECOVERY_CODE_USED")).hasSize(1);
+    }
+
+    @Test
+    void regeneratingRecoveryCodesRevokesThePreviousSet() {
+        Tenant tenant = tenantApplicationService.createTenant("MFA Recovery Regeneration Tenant");
+        User user = userApplicationService.createUser(tenant.getId(), "regenerate-user", "Regenerate User");
+        MfaEnrollmentResult enrollment = mfaApplicationService.enrollTotp(user.getId());
+        String totp = mfaApplicationService.generateTotpCode(enrollment.secret(), Instant.now());
+        String previousCode = mfaApplicationService.verifyTotp(user.getId(), totp).recoveryCodes().getFirst();
+
+        var replacement = mfaApplicationService.regenerateRecoveryCodes(user.getId());
+
+        assertThat(replacement.recoveryCodes()).hasSize(10).doesNotContain(previousCode);
+        assertThat(mfaApplicationService.verifyTotpChallenge(user.getId(), previousCode)).isFalse();
+        assertThat(mfaApplicationService.verifyTotpChallenge(user.getId(), replacement.recoveryCodes().getFirst())).isTrue();
+        assertThat(auditLogRepository.findByAction("MFA_RECOVERY_CODES_REGENERATED")).hasSize(1);
+    }
+
+    @Test
+    void replacementEnrollmentKeepsCurrentFactorUntilPendingSecretIsVerified() {
+        Tenant tenant = tenantApplicationService.createTenant("MFA Safe Replacement Tenant");
+        User user = userApplicationService.createUser(tenant.getId(), "safe-replace-user", "Safe Replace User");
+        MfaEnrollmentResult firstEnrollment = mfaApplicationService.enrollTotp(user.getId());
+        String firstTotp = mfaApplicationService.generateTotpCode(firstEnrollment.secret(), Instant.now());
+        List<String> oldRecoveryCodes = mfaApplicationService.verifyTotp(user.getId(), firstTotp).recoveryCodes();
+
+        MfaEnrollmentResult replacement = mfaApplicationService.enrollTotp(user.getId());
+
+        assertThat(mfaApplicationService.getStatus(user.getId()).totpVerified()).isTrue();
+        assertThat(mfaApplicationService.getStatus(user.getId()).enrollmentPending()).isTrue();
+        assertThat(mfaApplicationService.verifyTotpChallenge(user.getId(), oldRecoveryCodes.getFirst())).isTrue();
+
+        String replacementTotp = mfaApplicationService.generateTotpCode(replacement.secret(), Instant.now());
+        var replacementVerification = mfaApplicationService.verifyTotp(user.getId(), replacementTotp);
+
+        assertThat(replacementVerification.verified()).isTrue();
+        assertThat(replacementVerification.recoveryCodes()).hasSize(10);
+        assertThat(mfaApplicationService.getStatus(user.getId()).enrollmentPending()).isFalse();
+        assertThat(mfaApplicationService.verifyTotpChallenge(user.getId(), oldRecoveryCodes.get(1))).isFalse();
+        assertThat(auditLogRepository.findByAction("MFA_REENROLLMENT_STARTED")).hasSize(1);
+    }
+
+    @Test
+    void tenantAdministratorCannotObtainAnotherUsersMfaSecretsOrRecoveryCodes() {
+        Tenant tenant = tenantApplicationService.createTenant("MFA Self Service Tenant");
+        User administrator = userApplicationService.createUser(tenant.getId(), "mfa-admin", "MFA Admin");
+        User target = userApplicationService.createUser(tenant.getId(), "mfa-target", "MFA Target");
+        MfaEnrollmentResult targetEnrollment = mfaApplicationService.enrollTotp(target.getId());
+        String targetTotp = mfaApplicationService.generateTotpCode(targetEnrollment.secret(), Instant.now());
+        mfaApplicationService.verifyTotp(target.getId(), targetTotp);
+        authenticateUser(administrator, List.of("iam.mfa.manage"));
+
+        assertThatThrownBy(() -> mfaApplicationService.enrollTotp(target.getId()))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> mfaApplicationService.verifyTotp(target.getId(), targetTotp))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> mfaApplicationService.regenerateRecoveryCodes(target.getId()))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(mfaApplicationService.getStatus(target.getId()).recoveryCodesRemaining()).isEqualTo(10);
     }
 
     @ParameterizedTest
@@ -349,6 +440,7 @@ class ApplicationServiceTests {
         mfaApplicationService.disableTotp(user.getId());
 
         assertThat(totpCredentialRepository.findByUserId(user.getId())).isEmpty();
+        assertThat(mfaRecoveryCodeRepository.countByUserId(user.getId())).isZero();
     }
 
     @Test
@@ -358,7 +450,7 @@ class ApplicationServiceTests {
         MfaEnrollmentResult enrollment = mfaApplicationService.enrollTotp(user.getId());
         String code = mfaApplicationService.generateTotpCode(enrollment.secret(), Instant.now());
 
-        mfaApplicationService.verifyTotp(user.getId(), code);
+        List<String> recoveryCodes = mfaApplicationService.verifyTotp(user.getId(), code).recoveryCodes();
         mfaApplicationService.disableTotp(user.getId());
 
         assertThat(auditLogRepository.findByAction("MFA_ENROLLED"))
@@ -371,9 +463,17 @@ class ApplicationServiceTests {
         assertThat(auditLogRepository.findByAction("MFA_VERIFIED"))
                 .singleElement()
                 .satisfies(auditLog -> assertThat(auditLog.getResourceId()).isEqualTo(user.getId()));
+        assertThat(auditLogRepository.findByAction("MFA_RECOVERY_CODES_GENERATED"))
+                .singleElement()
+                .satisfies(auditLog -> assertThat(auditLog.getResourceId()).isEqualTo(user.getId()));
+        assertThat(auditLogRepository.findByAction("MFA_RECOVERY_CODES_REVOKED"))
+                .singleElement()
+                .satisfies(auditLog -> assertThat(auditLog.getResourceId()).isEqualTo(user.getId()));
         assertThat(auditLogRepository.findByAction("MFA_DISABLED"))
                 .singleElement()
                 .satisfies(auditLog -> assertThat(auditLog.getResourceId()).isEqualTo(user.getId()));
+        recoveryCodes.forEach(recoveryCode -> auditLogRepository.findAll()
+                .forEach(auditLog -> assertAuditLogDoesNotContain(auditLog, recoveryCode)));
     }
 
     @Test
@@ -1503,6 +1603,12 @@ class ApplicationServiceTests {
         assertThat(auditLog.getAction()).doesNotContain(sensitiveValue);
         assertThat(auditLog.getResourceType()).doesNotContain(sensitiveValue);
         assertThat(auditLog.getResourceId().toString()).doesNotContain(sensitiveValue);
+        assertThat(String.valueOf(auditLog.getReasonCode())).doesNotContain(sensitiveValue);
+        assertThat(String.valueOf(auditLog.getDetails())).doesNotContain(sensitiveValue);
+        assertThat(String.valueOf(auditLog.getSource())).doesNotContain(sensitiveValue);
+        assertThat(String.valueOf(auditLog.getCorrelationId())).doesNotContain(sensitiveValue);
+        assertThat(String.valueOf(auditLog.getIpAddress())).doesNotContain(sensitiveValue);
+        assertThat(String.valueOf(auditLog.getUserAgent())).doesNotContain(sensitiveValue);
     }
 
     private void authenticateTenantAdmin(java.util.UUID tenantId) {
@@ -1514,6 +1620,18 @@ class ApplicationServiceTests {
                 .claim("effective_permissions", List.of(
                         "iam.resource-servers.read",
                         "iam.resource-servers.write"))
+                .claim("scope", "iam.read iam.write")
+                .build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
+    }
+
+    private void authenticateUser(User user, List<String> permissions) {
+        Jwt jwt = Jwt.withTokenValue("user-mfa-test")
+                .header("alg", "none")
+                .subject(user.getId().toString())
+                .claim("user_id", user.getId().toString())
+                .claim("tenant_id", user.getTenant().getId().toString())
+                .claim("effective_permissions", permissions)
                 .claim("scope", "iam.read iam.write")
                 .build();
         SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));

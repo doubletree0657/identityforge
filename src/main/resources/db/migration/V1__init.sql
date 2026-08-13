@@ -72,6 +72,7 @@ CREATE TABLE totp_credentials (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL,
     secret_ciphertext VARCHAR(1024) NOT NULL,
+    pending_secret_ciphertext VARCHAR(1024),
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     verified_at TIMESTAMPTZ,
     last_used_time_step BIGINT,
@@ -79,6 +80,16 @@ CREATE TABLE totp_credentials (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_totp_credentials_user UNIQUE (user_id),
     CONSTRAINT fk_totp_credentials_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE TABLE mfa_recovery_codes (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    code_hash VARCHAR(64) NOT NULL,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_mfa_recovery_codes_user_hash UNIQUE (user_id, code_hash),
+    CONSTRAINT fk_mfa_recovery_codes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
 CREATE TABLE user_attributes (
@@ -401,6 +412,7 @@ CREATE TRIGGER trg_client_permissions_same_tenant
 CREATE INDEX idx_users_tenant_account_status ON users (tenant_id, account_status);
 CREATE INDEX idx_users_tenant_normalized_username ON users (tenant_id, normalized_username);
 CREATE INDEX idx_totp_credentials_user_id ON totp_credentials (user_id);
+CREATE INDEX idx_mfa_recovery_codes_user_unused ON mfa_recovery_codes (user_id) WHERE used_at IS NULL;
 CREATE INDEX idx_roles_tenant_id ON roles (tenant_id);
 CREATE INDEX idx_user_roles_role_id ON user_roles (role_id);
 CREATE INDEX idx_role_permissions_permission_id ON role_permissions (permission_id);
