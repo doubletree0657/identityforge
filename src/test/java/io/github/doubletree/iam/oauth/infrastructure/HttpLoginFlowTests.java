@@ -302,10 +302,10 @@ class HttpLoginFlowTests {
         userRepository.saveAndFlush(user);
 
         mockMvc.perform(get(authorizationRequest("stale-session-state"))
-                        .session(session)
+                .session(session)
                         .accept(MediaType.TEXT_HTML))
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl("http://localhost/login"));
+                .andExpect(redirectedUrl("/login?reason=session"));
 
         assertThat(session.isInvalid()).isTrue();
         assertThat(auditLogRepository.findByAction("USER_SESSION_REJECTED"))
@@ -341,7 +341,7 @@ class HttpLoginFlowTests {
     private void assertLoginFails(String username, String password) throws Exception {
         mockMvc.perform(formLogin().user(loginIdentifier(username)).password(password))
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl("/login?error"))
+                .andExpect(redirectedUrl("/login?error=credentials"))
                 .andExpect(unauthenticated());
     }
 

@@ -2,16 +2,15 @@ import { createContext, ReactNode, useContext, useEffect, useState } from 'react
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CurrentUser, getCurrentUser } from '../api/auth';
 import { getAccessToken, isAccessTokenExpired } from '../api/storage';
-import { isAuthenticationFailure } from '../utils/authErrors';
+import { AuthenticationStatus, resolveAuthenticationStatus } from '../utils/authState';
 
 export interface AuthContextValue {
   user?: CurrentUser;
+  status: AuthenticationStatus;
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
   hasPermission: (permission: string) => boolean;
-  sessionExpired: boolean;
-  authenticationFailed: boolean;
   error: Error | null;
   retry: () => void;
 }
@@ -31,28 +30,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   const hasAccessToken = Boolean(getAccessToken());
-  const sessionExpired = hasAccessToken && isAccessTokenExpired();
+  const accessTokenExpired = hasAccessToken && isAccessTokenExpired();
   const currentUser = useQuery({
     queryKey: ['current-user'],
     queryFn: getCurrentUser,
-    enabled: hasAccessToken && !sessionExpired,
+    enabled: hasAccessToken && !accessTokenExpired,
     retry: false,
   });
   const roles = currentUser.data?.effectiveRoles ?? currentUser.data?.roles ?? [];
   const permissions = currentUser.data?.effectivePermissions ?? [];
   const hasPermission = (permission: string) =>
     roles.includes('platform-admin') || permissions.includes('iam.admin') || permissions.includes(permission);
+  const status = resolveAuthenticationStatus({
+    hasAccessToken,
+    accessTokenExpired,
+    loading: currentUser.isLoading,
+    hasUser: Boolean(currentUser.data),
+    error: currentUser.error,
+  });
   const value: AuthContextValue = {
     user: currentUser.data,
+    status,
     isLoading: currentUser.isLoading,
-    isAuthenticated: Boolean(currentUser.data) && !sessionExpired,
+    isAuthenticated: status === 'authenticated',
     isAdmin: Boolean(currentUser.data?.isPlatformAdmin || currentUser.data?.isTenantAdmin)
       || roles.includes('platform-admin')
       || roles.includes('tenant-admin')
       || permissions.some((permission) => SYSTEM_IAM_PERMISSIONS.has(permission)),
     hasPermission,
-    sessionExpired,
-    authenticationFailed: isAuthenticationFailure(currentUser.error),
     error: currentUser.error,
     retry: () => { void currentUser.refetch(); },
   };

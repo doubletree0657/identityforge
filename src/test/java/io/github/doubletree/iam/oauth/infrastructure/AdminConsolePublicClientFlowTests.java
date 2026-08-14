@@ -3,7 +3,6 @@ package io.github.doubletree.iam.oauth.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.startsWith;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -17,6 +16,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -45,6 +45,8 @@ class AdminConsolePublicClientFlowTests {
     private static final String FRONTEND_ORIGIN = "http://localhost:5173";
     private static final String CODE_VERIFIER =
             "identityforge-admin-console-regression-code-verifier-1234567890";
+    private static final Pattern CSRF_INPUT = Pattern.compile(
+            "name=\"_csrf\" value=\"([^\"]+)\"");
 
     @Container
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -84,10 +86,19 @@ class AdminConsolePublicClientFlowTests {
         MockHttpSession session = (MockHttpSession) authorizationStart.getRequest().getSession(false);
         assertThat(session).isNotNull();
 
+        MvcResult loginPage = mockMvc.perform(get("/login").session(session))
+                .andExpect(status().isOk())
+                .andReturn();
+        String loginHtml = loginPage.getResponse().getContentAsString();
+        assertThat(loginHtml)
+                .contains("Sign in to IdentityForge")
+                .doesNotContain("Whitelabel Error Page");
+        String csrfToken = renderedCsrfToken(loginHtml);
+
         MvcResult login = mockMvc.perform(post("/login")
                         .session(session)
-                        .with(csrf())
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("_csrf", csrfToken)
                         .param("username", "development/admin")
                         .param("password", "admin123456"))
                 .andExpect(status().isFound())
@@ -158,9 +169,33 @@ class AdminConsolePublicClientFlowTests {
                 .andExpect(redirectedUrl("http://localhost/login"));
     }
 
+    @Test
+    void staleOrMissingLoginCsrfStateReturnsIntentionalRecoveryPage() throws Exception {
+        MvcResult rejected = mockMvc.perform(post("/login")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("username", "development/admin")
+                        .param("password", "admin123456")
+                        .param("_csrf", "expired-login-form-token"))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/login?reason=request"))
+                .andReturn();
+
+        mockMvc.perform(get(rejected.getResponse().getRedirectedUrl()))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                        .contains("sign-in page was no longer valid")
+                        .doesNotContain("Whitelabel Error Page"));
+    }
+
     private String codeChallenge(String verifier) throws Exception {
         byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(verifier.getBytes(StandardCharsets.US_ASCII));
         return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+    }
+
+    private String renderedCsrfToken(String html) {
+        var matcher = CSRF_INPUT.matcher(html);
+        assertThat(matcher.find()).as("backend login form has a rendered CSRF token").isTrue();
+        return matcher.group(1);
     }
 }

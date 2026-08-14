@@ -1,6 +1,7 @@
 package io.github.doubletree.iam.authentication.infrastructure;
 
 import io.github.doubletree.iam.authentication.application.MfaApplicationService;
+import io.github.doubletree.iam.oauth.infrastructure.AuthenticatedSessionLifetime;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -49,6 +50,7 @@ public class MfaAuthenticationSuccessHandler implements AuthenticationSuccessHan
             return;
         }
 
+        AuthenticatedSessionLifetime.markAuthenticated(request.getSession());
         delegate.onAuthenticationSuccess(request, response, authentication);
     }
 }

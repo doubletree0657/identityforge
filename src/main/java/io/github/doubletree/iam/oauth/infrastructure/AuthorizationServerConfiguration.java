@@ -162,6 +162,9 @@ public class AuthorizationServerConfiguration {
                                 })))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
+                        .defaultAccessDeniedHandlerFor(
+                                authenticationFlowAccessDeniedHandler(),
+                                endpoint(HttpMethod.POST, "/oauth2/authorize"))
                         .defaultAuthenticationEntryPointFor(
                                 new BearerTokenAuthenticationEntryPoint(),
                                 PathPatternRequestMatcher.withDefaults().matcher("/userinfo"))
@@ -270,7 +273,7 @@ public class AuthorizationServerConfiguration {
                         .anyRequest().permitAll())
                 .formLogin(form -> form
                         .loginPage("/login")
-                        .failureUrl("/login?error")
+                        .failureUrl("/login?error=credentials")
                         .successHandler(mfaAuthenticationSuccessHandler)
                         .permitAll())
                 .logout(logout -> logout
@@ -294,6 +297,13 @@ public class AuthorizationServerConfiguration {
                                 .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
                 .sessionManagement(session -> session
                         .sessionFixation(fixation -> fixation.changeSessionId()))
+                .exceptionHandling(exceptions -> exceptions
+                        .defaultAccessDeniedHandlerFor(
+                                authenticationFlowAccessDeniedHandler(),
+                                new OrRequestMatcher(
+                                        endpoint(HttpMethod.POST, "/login"),
+                                        endpoint(HttpMethod.POST, "/login/mfa"),
+                                        endpoint(HttpMethod.POST, "/logout"))))
                 .addFilterAfter(
                         new SessionSecurityStateFilter(
                                 securityStateService, auditApplicationService, sessionAbsoluteTimeout),
@@ -553,7 +563,7 @@ public class AuthorizationServerConfiguration {
                 authorizationException.getAuthorizationCodeRequestAuthentication();
 
         if (authorization == null || !StringUtils.hasText(authorization.getRedirectUri())) {
-            response.sendError(HttpStatus.BAD_REQUEST.value(), error.toString());
+            response.sendRedirect("/login?reason=authorization");
             return;
         }
 
@@ -657,8 +667,10 @@ public class AuthorizationServerConfiguration {
                     .claim("user_id", userDetails.userId().toString())
                     .claim("tenant_id", userDetails.tenantId().toString())
                     .claim("preferred_username", userDetails.getUsername())
-                    .claim("display_name", userDetails.displayName())
                     .claim("security_version", userDetails.securityVersion());
+            if (StringUtils.hasText(userDetails.displayName())) {
+                context.getClaims().claim("display_name", userDetails.displayName());
+            }
             if ("identityforge-admin-api".equals(audience)) {
                 context.getClaims()
                         .claim("platform_operator", userDetails.platformOperator())
@@ -684,6 +696,10 @@ public class AuthorizationServerConfiguration {
 
     private static RequestMatcher endpoint(HttpMethod method, String path) {
         return PathPatternRequestMatcher.withDefaults().matcher(method, path);
+    }
+
+    private static org.springframework.security.web.access.AccessDeniedHandler authenticationFlowAccessDeniedHandler() {
+        return (request, response, exception) -> response.sendRedirect("/login?reason=request");
     }
 
     private static String browserContentSecurityPolicy() {

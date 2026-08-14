@@ -43,12 +43,18 @@ public class OidcIdentityClaims {
     private Map<String, Object> basicIdentityClaims(PlatformUserDetails userDetails) {
         Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("sub", userDetails.userId().toString());
-        claims.put("preferred_username", userDetails.username());
-        claims.put("name", userDetails.displayName());
-        claims.put("display_name", userDetails.displayName());
         claims.put("tenant_id", userDetails.tenantId().toString());
-        claims.put("tenant_name", userDetails.tenantName());
+        putIfPresent(claims, "preferred_username", userDetails.username());
+        putIfPresent(claims, "name", userDetails.displayName());
+        putIfPresent(claims, "display_name", userDetails.displayName());
+        putIfPresent(claims, "tenant_name", userDetails.tenantName());
         return claims;
+    }
+
+    private void putIfPresent(Map<String, Object> claims, String name, String value) {
+        if (StringUtils.hasText(value)) {
+            claims.put(name, value);
+        }
     }
 
     private void addEmailClaims(

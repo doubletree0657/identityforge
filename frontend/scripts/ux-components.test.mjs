@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { createServer, transformWithEsbuild } from 'vite';
 
 const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
@@ -13,6 +15,7 @@ const flows = await import(`data:text/javascript;base64,${Buffer.from(flowCompil
 const authErrorsSource = await readFile(new URL('../src/utils/authErrors.ts', import.meta.url), 'utf8');
 const authErrorsCompiled = await transformWithEsbuild(authErrorsSource, 'authErrors.ts', { loader: 'ts', format: 'esm', target: 'es2020' });
 const authErrors = await import(`data:text/javascript;base64,${Buffer.from(authErrorsCompiled.code).toString('base64')}`);
+const authState = await server.ssrLoadModule('/src/utils/authState.ts');
 
 test('shared UI states expose accessible status, recovery, and workflow semantics', async () => {
   const { EmptyState, ErrorState, LoadingState } = await server.ssrLoadModule('/src/components/State.tsx');
@@ -78,11 +81,51 @@ test('SCIM demo commands stay tenant-scoped, protocol-shaped, and token-safe', (
   assert.match(hostilePath, /group%27%3B%20echo%20unsafe/);
 });
 
-test('only authentication failures are classified as expired sessions', () => {
+test('only 401 responses are classified as invalidated authentication', () => {
   assert.equal(authErrors.isAuthenticationFailure({ status: 401, code: 'unauthorized' }), true);
   assert.equal(authErrors.isAuthenticationFailure({ status: 500, code: 'server_error' }), false);
   assert.equal(authErrors.isAuthenticationFailure({ status: 403, code: 'forbidden' }), false);
   assert.equal(authErrors.isAuthenticationFailure(new Error('Network unavailable')), false);
+});
+
+test('authentication lifecycle keeps anonymous, expiry, denial, and API failure distinct', () => {
+  const resolve = (overrides = {}) => authState.resolveAuthenticationStatus({
+    hasAccessToken: false,
+    accessTokenExpired: false,
+    loading: false,
+    hasUser: false,
+    error: null,
+    ...overrides,
+  });
+  assert.equal(resolve(), 'anonymous');
+  assert.equal(resolve({ hasAccessToken: true, accessTokenExpired: true }), 'access_token_expired');
+  assert.equal(resolve({ hasAccessToken: true, error: { status: 401 } }), 'authorization_invalidated');
+  assert.equal(resolve({ hasAccessToken: true, hasUser: true, error: { status: 401 } }), 'authorization_invalidated');
+  assert.equal(resolve({ hasAccessToken: true, error: { status: 403 } }), 'authorization_denied');
+  assert.equal(resolve({ hasAccessToken: true, error: { status: 500 } }), 'api_failure');
+  assert.equal(resolve({ hasAccessToken: true, hasUser: true }), 'authenticated');
+});
+
+test('console access tokens are bounded to the browser session and legacy persistent tokens are discarded', async () => {
+  const memoryStorage = () => {
+    const values = new Map();
+    return {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, String(value)),
+      removeItem: (key) => values.delete(key),
+    };
+  };
+  globalThis.localStorage = memoryStorage();
+  globalThis.sessionStorage = memoryStorage();
+  globalThis.window = { dispatchEvent: () => true };
+  localStorage.setItem('iam.adminConsole.token', 'legacy-token');
+  const storage = await server.ssrLoadModule('/src/api/storage.ts');
+
+  storage.setAuthToken('session-token', 600);
+
+  assert.equal(sessionStorage.getItem('iam.adminConsole.token'), 'session-token');
+  assert.equal(localStorage.getItem('iam.adminConsole.token'), null);
+  assert.equal(storage.getAccessToken(), 'session-token');
 });
 
 test('Admin Console bootstrap renders server failures instead of reporting session expiry', async () => {
@@ -90,12 +133,11 @@ test('Admin Console bootstrap renders server failures instead of reporting sessi
   const markup = renderToStaticMarkup(AuthGateView({
     children: 'Dashboard content',
     auth: {
+      status: 'api_failure',
       isLoading: false,
       isAuthenticated: false,
       isAdmin: false,
       hasPermission: () => false,
-      sessionExpired: false,
-      authenticationFailed: false,
       error: { status: 500, code: 'server_error', message: 'The server could not complete this request.' },
       retry: () => undefined,
     },
@@ -111,16 +153,27 @@ test('authenticated administrators pass the gate and reach dashboard content', a
   const markup = renderToStaticMarkup(AuthGateView({
     children: 'Admin Console dashboard',
     auth: {
+      status: 'authenticated',
       isLoading: false,
       isAuthenticated: true,
       isAdmin: true,
       hasPermission: () => true,
-      sessionExpired: false,
-      authenticationFailed: false,
       error: null,
       retry: () => undefined,
     },
   }));
 
   assert.match(markup, /Admin Console dashboard/);
+});
+
+test('fresh anonymous visits route to sign in without an expiry reason', async () => {
+  const { LoginPage } = await server.ssrLoadModule('/src/pages/LoginPage.tsx');
+  const markup = renderToStaticMarkup(createElement(
+    MemoryRouter,
+    { initialEntries: ['/login'] },
+    createElement(LoginPage),
+  ));
+
+  assert.doesNotMatch(markup, /Session expired|Access token expired|Authorization ended/);
+  assert.match(markup, /Sign in to the Admin Console/);
 });

@@ -9,19 +9,19 @@ export function AuthGate({ children }: { children: ReactNode }) {
 }
 
 export function AuthGateView({ children, auth }: { children: ReactNode; auth: AuthContextValue }) {
-  if (auth.sessionExpired || auth.authenticationFailed) {
-    return <Navigate to="/login" state={{ expired: true }} replace />;
+  if (auth.status === 'access_token_expired' || auth.status === 'authorization_invalidated') {
+    return <Navigate to="/login" state={{ reason: auth.status }} replace />;
   }
-  if (auth.isLoading) {
+  if (auth.status === 'checking') {
     return <div className="flex min-h-screen items-center justify-center bg-[#edf3f2] p-6"><div className="w-full max-w-lg"><LoadingState label="Loading administrator permissions and tenant context" /></div></div>;
   }
-  if (auth.error) {
+  if (auth.status === 'api_failure') {
     return <div className="flex min-h-screen items-center justify-center bg-[#edf3f2] p-6"><div className="w-full max-w-lg"><ErrorState error={auth.error} onRetry={auth.retry} /></div></div>;
   }
-  if (!auth.isAuthenticated) {
+  if (auth.status === 'anonymous') {
     return <Navigate to="/login" replace />;
   }
-  if (!auth.isAdmin) {
+  if (auth.status === 'authorization_denied' || !auth.isAdmin) {
     return <Navigate to="/access-denied" replace />;
   }
   return <>{children}</>;

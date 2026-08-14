@@ -11,7 +11,6 @@ import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
@@ -54,15 +53,22 @@ public class SessionSecurityStateFilter extends OncePerRequestFilter {
         auditApplicationService.recordFailure(
                 userDetails.tenantId(), "USER_SESSION_REJECTED", "USER", userDetails.userId(), reason);
         logoutHandler.logout(request, response, authentication);
-        response.setStatus(HttpStatus.UNAUTHORIZED.value());
+        response.sendRedirect("/login?reason=session");
     }
 
     private String invalidationReason(HttpSession session, PlatformUserDetails userDetails) {
         if (session == null) {
             return null;
         }
+        Instant authenticatedAt = AuthenticatedSessionLifetime.authenticatedAt(session);
+        if (authenticatedAt == null) {
+            // New logins always set the marker in the success handler (or after
+            // MFA). Preserve the stricter creation-time deadline only for an
+            // authenticated session created before this marker was deployed.
+            authenticatedAt = AuthenticatedSessionLifetime.initializeLegacySession(session);
+        }
         if (!absoluteTimeout.isZero() && !absoluteTimeout.isNegative()
-                && Instant.ofEpochMilli(session.getCreationTime()).plus(absoluteTimeout).isBefore(Instant.now())) {
+                && authenticatedAt.plus(absoluteTimeout).isBefore(Instant.now())) {
             return "SESSION_ABSOLUTE_TIMEOUT";
         }
         return securityStateService.isTokenStateCurrent(userDetails.userId(), userDetails.securityVersion())

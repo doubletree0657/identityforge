@@ -1,5 +1,6 @@
 package io.github.doubletree.iam.web;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.doubletree.iam.applications.web.ClientController;
 import io.github.doubletree.iam.applications.web.ResourceServerController;
 import io.github.doubletree.iam.audit.web.AuditLogController;
@@ -22,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -33,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 
 import io.github.doubletree.iam.shared.exception.ClientValidationException;
 import io.github.doubletree.iam.shared.exception.PasswordValidationException;
@@ -82,6 +85,10 @@ import io.github.doubletree.iam.authentication.infrastructure.PasswordEncodingCo
 import io.github.doubletree.iam.authentication.infrastructure.MfaAuthenticationSuccessHandler;
 import io.github.doubletree.iam.authentication.infrastructure.PlatformUserDetails;
 import io.github.doubletree.iam.authentication.infrastructure.SecurityContextCurrentActor;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -89,6 +96,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -96,14 +105,18 @@ import org.springframework.http.MediaType;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @WebMvcTest({
         TenantController.class,
@@ -125,6 +138,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
         AuthorizationServerConfiguration.class,
         FileSigningKeyProvider.class,
         PasswordEncodingConfiguration.class,
+        MfaAuthenticationSuccessHandler.class,
+        CoreIamControllerTests.BrowserFlowTestConfiguration.class,
         SecurityContextCurrentActor.class
 })
 class CoreIamControllerTests {
@@ -143,6 +158,9 @@ class CoreIamControllerTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @MockitoBean
     private TenantApplicationService tenantApplicationService;
@@ -178,9 +196,6 @@ class CoreIamControllerTests {
     private RegisteredClientRepository registeredClientRepository;
 
     @MockitoBean
-    private MfaAuthenticationSuccessHandler mfaAuthenticationSuccessHandler;
-
-    @MockitoBean
     private UserSecurityStateService userSecurityStateService;
 
     @MockitoBean
@@ -197,6 +212,23 @@ class CoreIamControllerTests {
                     .claim("aud", List.of("identityforge-admin-api"))
                     .claim("scope", "iam.read iam.write"))
             .authorities(new SimpleGrantedAuthority("SCOPE_iam.write"));
+
+    @TestConfiguration
+    static class BrowserFlowTestConfiguration {
+
+        @Bean
+        UserDetailsService browserFlowUserDetailsService() {
+            return ignored -> new PlatformUserDetails(
+                    USER_ID,
+                    TENANT_ID,
+                    "admin",
+                    "Development Super Admin",
+                    "{noop}admin123456",
+                    AccountStatus.ACTIVE,
+                    Set.of("platform-admin"),
+                    Set.of("iam.admin"));
+        }
+    }
 
     private final RequestPostProcessor readScopeJwt = jwt()
             .jwt(token -> token
@@ -247,6 +279,20 @@ class CoreIamControllerTests {
                 .authorities(new SimpleGrantedAuthority("SCOPE_" + scope.split(" ")[0]));
     }
 
+    private String codeChallenge(String verifier) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(verifier.getBytes(StandardCharsets.US_ASCII));
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+    }
+
+    private String renderedInput(String html, String name) {
+        var matcher = java.util.regex.Pattern.compile(
+                        "name=\\\"" + java.util.regex.Pattern.quote(name) + "\\\" value=\\\"([^\\\"]+)\\\"")
+                .matcher(html);
+        assertThat(matcher.find()).as("rendered input " + name).isTrue();
+        return matcher.group(1);
+    }
+
     @Test
     void currentUserRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/me"))
@@ -280,6 +326,117 @@ class CoreIamControllerTests {
                         .queryParam("code_challenge_method", "S256"))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("http://localhost/login"));
+    }
+
+    @Test
+    void rejectedLoginCsrfUsesBrandedRecoveryInsteadOfWhitelabelError() throws Exception {
+        mockMvc.perform(post("/login")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("username", "development/admin")
+                        .param("password", "admin123456")
+                        .param("_csrf", "stale-token"))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/login?reason=request"));
+
+        mockMvc.perform(get("/login").queryParam("reason", "request"))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                        .contains("sign-in page was no longer valid")
+                        .doesNotContain("Whitelabel Error Page"));
+    }
+
+    @Test
+    void backendLoginPageRendersBrowserSessionCsrfTokenAndUnifiedProductShell() throws Exception {
+        mockMvc.perform(get("/login"))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                        .contains("Sign in to IdentityForge")
+                        .contains("name=\"_csrf\"")
+                        .contains("Authorization Server")
+                        .doesNotContain("Whitelabel Error Page"));
+    }
+
+    @Test
+    void publicClientFirstRenderedFormLoginCompletesPkceAndReachesCurrentUser() throws Exception {
+        RegisteredClient consoleClient = RegisteredClient.withId(CLIENT_ID.toString())
+                .clientId("identityforge-console")
+                .clientName("IdentityForge Console")
+                .clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .redirectUri("http://localhost:5173/oauth2/callback")
+                .scope("openid")
+                .scope("profile")
+                .scope("iam.read")
+                .scope("iam.write")
+                .clientSettings(ClientSettings.builder()
+                        .requireProofKey(true)
+                        .requireAuthorizationConsent(false)
+                        .build())
+                .build();
+        when(registeredClientRepository.findByClientId("identityforge-console")).thenReturn(consoleClient);
+        when(userSecurityStateService.isTokenStateCurrent(USER_ID, 1)).thenReturn(true);
+        when(accessTokenAuthorizationState.isActive(any())).thenReturn(true);
+        String verifier = "identityforge-browser-flow-code-verifier-12345678901234567890";
+        String authorizationRequest = UriComponentsBuilder.fromPath("/oauth2/authorize")
+                .queryParam("response_type", "code")
+                .queryParam("client_id", "identityforge-console")
+                .queryParam("redirect_uri", "http://localhost:5173/oauth2/callback")
+                .queryParam("scope", "openid profile iam.read iam.write")
+                .queryParam("state", "first-attempt-state")
+                .queryParam("code_challenge", codeChallenge(verifier))
+                .queryParam("code_challenge_method", "S256")
+                .build()
+                .toUriString();
+
+        MvcResult start = mockMvc.perform(get(authorizationRequest).accept(MediaType.TEXT_HTML))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("http://localhost/login"))
+                .andReturn();
+        MockHttpSession session = (MockHttpSession) start.getRequest().getSession(false);
+        MvcResult loginPage = mockMvc.perform(get("/login").session(session))
+                .andExpect(status().isOk())
+                .andReturn();
+        String csrfToken = renderedInput(loginPage.getResponse().getContentAsString(), "_csrf");
+
+        MvcResult login = mockMvc.perform(post("/login")
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("_csrf", csrfToken)
+                        .param("username", "development/admin")
+                        .param("password", "admin123456"))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, startsWith("http://localhost/oauth2/authorize")))
+                .andReturn();
+
+        MvcResult authorized = mockMvc.perform(get(URI.create(login.getResponse().getRedirectedUrl()))
+                        .session(session))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, startsWith("http://localhost:5173/oauth2/callback?")))
+                .andReturn();
+        var callback = UriComponentsBuilder.fromUriString(authorized.getResponse().getRedirectedUrl())
+                .build()
+                .getQueryParams();
+
+        MvcResult tokenResult = mockMvc.perform(post("/oauth2/token")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "authorization_code")
+                        .param("client_id", "identityforge-console")
+                        .param("redirect_uri", "http://localhost:5173/oauth2/callback")
+                        .param("code", callback.getFirst("code"))
+                        .param("code_verifier", verifier))
+                .andExpect(status().isOk())
+                .andReturn();
+        String accessToken = objectMapper.readTree(tokenResult.getResponse().getContentAsString())
+                .get("access_token")
+                .asText();
+
+        mockMvc.perform(get("/api/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5173"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("admin"))
+                .andExpect(jsonPath("$.effectiveRoles[0]").value("platform-admin"));
     }
 
     @Test
@@ -358,7 +515,8 @@ class CoreIamControllerTests {
         mockMvc.perform(post("/logout").with(
                         org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
                                 .user(principal)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/login?reason=request"));
     }
 
     @Test

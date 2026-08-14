@@ -5,6 +5,7 @@ import io.github.doubletree.iam.applications.domain.ResourcePermission;
 import io.github.doubletree.iam.applications.infrastructure.persistence.ClientRepository;
 import io.github.doubletree.iam.authentication.infrastructure.MfaAuthenticationSuccessHandler;
 import io.github.doubletree.iam.authentication.infrastructure.PlatformUserDetails;
+import io.github.doubletree.iam.oauth.infrastructure.AuthenticatedSessionLifetime;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import java.util.Arrays;
@@ -51,9 +52,10 @@ public class AuthPageController {
     @GetMapping(value = "/login", produces = MediaType.TEXT_HTML_VALUE)
     public ResponseEntity<String> login(
             @RequestParam(required = false) String error,
+            @RequestParam(required = false) String reason,
             @RequestParam(required = false) String logout,
             HttpServletRequest request) {
-        String message = error == null ? "" : GENERIC_LOGIN_FAILURE;
+        String message = loginMessage(error, reason);
         String logoutMessage = logout == null ? "" : "You have been signed out.";
         return html("""
                 <div class="eyebrow">IAM Sign In</div>
@@ -109,6 +111,7 @@ public class AuthPageController {
         securityContext.setAuthentication(authentication);
         SecurityContextHolder.setContext(securityContext);
         securityContextRepository.saveContext(securityContext, request, response);
+        AuthenticatedSessionLifetime.markAuthenticated(session);
         session.removeAttribute(MfaAuthenticationSuccessHandler.PENDING_AUTHENTICATION_ATTRIBUTE);
         Object targetUrl = session.getAttribute(MfaAuthenticationSuccessHandler.PENDING_TARGET_URL_ATTRIBUTE);
         session.removeAttribute(MfaAuthenticationSuccessHandler.PENDING_TARGET_URL_ATTRIBUTE);
@@ -248,6 +251,19 @@ public class AuthPageController {
         return message == null || message.isBlank() ? "" : "<div class=\"notice\">" + escape(message) + "</div>";
     }
 
+    private String loginMessage(String error, String reason) {
+        if ("request".equals(reason)) {
+            return "That sign-in page was no longer valid. IdentityForge started a fresh, protected request; please try again.";
+        }
+        if ("session".equals(reason)) {
+            return "Your authorization-server session ended or was invalidated. Sign in again to continue.";
+        }
+        if ("authorization".equals(reason)) {
+            return "IdentityForge could not continue that authorization request. Return to the application and start sign-in again.";
+        }
+        return error == null ? "" : GENERIC_LOGIN_FAILURE;
+    }
+
     private ResponseEntity<String> redirect(String location) {
         return ResponseEntity.status(302).header("Location", location).build();
     }
@@ -266,9 +282,14 @@ public class AuthPageController {
                           <title>IdentityForge</title>
                           <style>
                             *{box-sizing:border-box}
-                            body{margin:0;min-height:100vh;background:linear-gradient(135deg,#edf3f2 0,#f8fafc 62vw);color:#172033;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-                            body:before{content:"IdentityForge";display:block;width:min(500px,calc(100vw - 32px));margin:5vh auto -3vh;color:#1f7a6d;font-size:15px;font-weight:750;letter-spacing:-.01em}
-                            main{width:min(500px,calc(100vw - 32px));margin:5vh auto;padding:32px;background:#fff;border:1px solid #d7dde8;border-radius:16px;box-shadow:0 20px 55px rgba(15,23,42,.12)}
+                            body{margin:0;min-height:100vh;background:#edf3f2;color:#172033;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+                            .shell{width:min(520px,calc(100vw - 32px));margin:0 auto;padding:6vh 0 28px}
+                            .product{display:flex;align-items:center;justify-content:space-between;margin:0 4px 22px}
+                            .brand{display:flex;align-items:center;gap:11px;color:#172033;font-size:14px;font-weight:750;letter-spacing:-.01em}
+                            .mark{display:grid;width:40px;height:40px;place-items:center;border-radius:9px;background:#1f7a6d;color:#fff;font-size:19px;box-shadow:0 1px 2px rgba(15,23,42,.12)}
+                            .surface{padding:32px;background:#fff;border:1px solid #d7dde8;border-radius:16px;box-shadow:0 1px 2px rgba(23,32,51,.06),0 8px 24px rgba(23,32,51,.04)}
+                            .product-state{border:1px solid #d7dde8;border-radius:999px;background:#fff;padding:5px 10px;color:#64748b;font-size:10px;font-weight:750;letter-spacing:.1em;text-transform:uppercase}
+                            .product-foot{display:flex;justify-content:center;gap:7px;margin:18px 18px 0;color:#64748b;text-align:center;font-size:11px;line-height:1.5}
                             h1{margin:6px 0 10px;font-size:28px;line-height:1.2;letter-spacing:-.025em}
                             .eyebrow{color:#1f7a6d;font-size:11px;font-weight:750;letter-spacing:.14em;text-transform:uppercase}
                             .lede{margin:0 0 22px;color:#526173;font-size:14px;line-height:1.65}
@@ -291,13 +312,15 @@ public class AuthPageController {
                             .scopes strong{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
                             .scopes span{font-size:13px;color:#526173;line-height:1.45}
                             .consent-note{margin:0 0 18px;color:#64748b;font-size:12px;line-height:1.55}
-                            @media(max-width:540px){body:before{margin-top:24px}main{margin:24px auto;padding:24px}h1{font-size:25px}}
+                            @media(max-width:540px){.shell{padding-top:24px}.surface{padding:24px}h1{font-size:25px}}
                             @media(prefers-reduced-motion:reduce){*{transition:none!important}}
                           </style>
                         </head>
-                        <body><main>
-                        %s
-                        </main></body>
+                        <body><div class="shell">
+                          <header class="product"><div class="brand"><span class="mark" aria-hidden="true">&#9670;</span><span>IdentityForge</span></div><span class="product-state">Authorization Server</span></header>
+                          <main class="surface">%s</main>
+                          <footer class="product-foot"><span aria-hidden="true">&#128274;</span><span>Protected browser session &middot; Authorization Code with PKCE</span></footer>
+                        </div></body>
                         </html>
                         """.formatted(body));
     }
