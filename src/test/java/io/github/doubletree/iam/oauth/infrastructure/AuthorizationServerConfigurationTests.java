@@ -26,6 +26,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
+import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -53,6 +55,9 @@ class AuthorizationServerConfigurationTests {
 
     @Autowired
     private JwtDecoder jwtDecoder;
+
+    @Autowired
+    private OAuth2AuthorizationService authorizationService;
 
     @Autowired
     private MockMvc mockMvc;
@@ -101,6 +106,7 @@ class AuthorizationServerConfigurationTests {
         assertThat(authorizationServerSettings).isNotNull();
         assertThat(jwkSource).isNotNull();
         assertThat(jwtDecoder).isNotNull();
+        assertThat(authorizationService).isInstanceOf(JdbcOAuth2AuthorizationService.class);
     }
 
     @Test
@@ -113,7 +119,9 @@ class AuthorizationServerConfigurationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.access_token").isNotEmpty())
                 .andExpect(jsonPath("$.token_type").value("Bearer"))
-                .andExpect(jsonPath("$.expires_in").isNumber());
+                .andExpect(jsonPath("$.expires_in").isNumber())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")));
     }
 
     @Test

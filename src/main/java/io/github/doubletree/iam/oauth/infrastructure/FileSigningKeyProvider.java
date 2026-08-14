@@ -19,6 +19,7 @@ import java.util.Properties;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -28,10 +29,22 @@ public class FileSigningKeyProvider implements SigningKeyProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileSigningKeyProvider.class);
     private final RSAKey currentKey;
 
-    public FileSigningKeyProvider(@Value("${iam.security.signing-key-file:}") String configuredPath) {
-        this.currentKey = configuredPath == null || configuredPath.isBlank()
-                ? ephemeralKey()
-                : loadOrCreate(Path.of(configuredPath));
+    public FileSigningKeyProvider(String configuredPath) {
+        this(configuredPath, true);
+    }
+
+    @Autowired
+    public FileSigningKeyProvider(
+            @Value("${iam.security.signing-key-file:}") String configuredPath,
+            @Value("${iam.security.allow-signing-key-generation:false}") boolean allowKeyGeneration) {
+        if (configuredPath == null || configuredPath.isBlank()) {
+            if (!allowKeyGeneration) {
+                throw new IllegalStateException("iam.security.signing-key-file must be configured");
+            }
+            this.currentKey = ephemeralKey();
+            return;
+        }
+        this.currentKey = load(Path.of(configuredPath), allowKeyGeneration);
     }
 
     @Override
@@ -39,10 +52,13 @@ public class FileSigningKeyProvider implements SigningKeyProvider {
         return currentKey;
     }
 
-    private RSAKey loadOrCreate(Path path) {
+    private RSAKey load(Path path, boolean allowKeyGeneration) {
         try {
             if (Files.exists(path)) {
                 return read(path);
+            }
+            if (!allowKeyGeneration) {
+                throw new IllegalStateException("OAuth2 signing key file does not exist: " + path);
             }
             Path parent = path.toAbsolutePath().getParent();
             if (parent != null) {
@@ -64,6 +80,9 @@ public class FileSigningKeyProvider implements SigningKeyProvider {
             restrictPermissions(path);
             return generated;
         } catch (Exception exception) {
+            if (exception instanceof IllegalStateException illegalStateException) {
+                throw illegalStateException;
+            }
             throw new IllegalStateException("Unable to load or create OAuth2 signing key at " + path, exception);
         }
     }

@@ -10,6 +10,7 @@ import io.github.doubletree.iam.directory.web.RoleController;
 import io.github.doubletree.iam.directory.web.TenantController;
 import io.github.doubletree.iam.directory.web.UserController;
 import io.github.doubletree.iam.oauth.web.CurrentUserController;
+import io.github.doubletree.iam.oauth.web.AuthPageController;
 import io.github.doubletree.iam.provisioning.web.ScimController;
 import io.github.doubletree.iam.provisioning.web.ScimExceptionHandler;
 import io.github.doubletree.iam.provisioning.application.ScimProvisioningService;
@@ -43,6 +44,7 @@ import io.github.doubletree.iam.authentication.api.MfaStatus;
 import io.github.doubletree.iam.authentication.api.MfaVerificationResult;
 import io.github.doubletree.iam.oauth.infrastructure.AuthorizationServerConfiguration;
 import io.github.doubletree.iam.oauth.infrastructure.FileSigningKeyProvider;
+import io.github.doubletree.iam.oauth.application.OAuth2AuthorizationLifecycleService;
 import io.github.doubletree.iam.authentication.application.UserSecurityStateService;
 import io.github.doubletree.iam.audit.application.AuditApplicationService;
 import io.github.doubletree.iam.applications.application.ClientApplicationService;
@@ -109,6 +111,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
         MfaController.class,
         AuditLogController.class,
         CurrentUserController.class,
+        AuthPageController.class,
         ScimController.class,
         ScimExceptionHandler.class,
         RestExceptionHandler.class
@@ -174,6 +177,9 @@ class CoreIamControllerTests {
 
     @MockitoBean
     private UserSecurityStateService userSecurityStateService;
+
+    @MockitoBean
+    private OAuth2AuthorizationLifecycleService authorizationLifecycleService;
 
     private final RequestPostProcessor writeScopeJwt = jwt()
             .jwt(token -> token
@@ -270,6 +276,33 @@ class CoreIamControllerTests {
 
     @Test
     void browserLogoutInvalidatesSessionAuditsAndRedirectsToFrontendLogin() throws Exception {
+        when(userSecurityStateService.isTokenStateCurrent(USER_ID, 1)).thenReturn(true);
+        PlatformUserDetails principal = new PlatformUserDetails(
+                USER_ID,
+                TENANT_ID,
+                "admin",
+                "Development Super Admin",
+                "{noop}not-exposed",
+                AccountStatus.ACTIVE,
+                Set.of("platform-admin"),
+                Set.of("iam.users.read"));
+
+        mockMvc.perform(post("/logout")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .user(principal)))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("http://localhost:5173/login?loggedOut=true"))
+                .andExpect(header().string("Set-Cookie", containsString("JSESSIONID=;")))
+                .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
+
+        verify(auditApplicationService).recordEvent(TENANT_ID, "USER_LOGGED_OUT", "USER", USER_ID);
+        verify(authorizationLifecycleService).revokeUserClientAuthorizations(USER_ID, "identityforge-console");
+    }
+
+    @Test
+    void browserLogoutRequiresPostAndCsrf() throws Exception {
+        when(userSecurityStateService.isTokenStateCurrent(USER_ID, 1)).thenReturn(true);
         PlatformUserDetails principal = new PlatformUserDetails(
                 USER_ID,
                 TENANT_ID,
@@ -283,12 +316,12 @@ class CoreIamControllerTests {
         mockMvc.perform(get("/logout").with(
                         org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
                                 .user(principal)))
-                .andExpect(status().isFound())
-                .andExpect(redirectedUrl("http://localhost:5173/login?loggedOut=true"))
-                .andExpect(header().string("Set-Cookie", containsString("JSESSIONID=;")))
-                .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
+                .andExpect(status().isOk());
 
-        verify(auditApplicationService).recordEvent(TENANT_ID, "USER_LOGGED_OUT", "USER", USER_ID);
+        mockMvc.perform(post("/logout").with(
+                        org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .user(principal)))
+                .andExpect(status().isForbidden());
     }
 
     @Test

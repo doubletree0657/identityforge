@@ -76,6 +76,7 @@ export function getCurrentUser() {
 
 export function logout() {
   clearAccessToken();
+  clearOAuthLoginAttempt();
   window.location.assign(new URL('/logout', getApiBaseUrl()).toString());
 }
 

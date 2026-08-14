@@ -1,5 +1,8 @@
 package io.github.doubletree.iam.authentication.infrastructure;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.github.doubletree.iam.directory.domain.AccountStatus;
 import io.github.doubletree.iam.directory.domain.PasswordCredential;
 import io.github.doubletree.iam.directory.domain.User;
@@ -15,6 +18,8 @@ import java.util.stream.Collectors;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record PlatformUserDetails(
         UUID userId,
         UUID tenantId,
@@ -23,7 +28,7 @@ public record PlatformUserDetails(
         String displayName,
         String email,
         boolean emailVerified,
-        String password,
+        @JsonIgnore String password,
         AccountStatus accountStatus,
         TenantStatus tenantStatus,
         boolean passwordResetRequired,
@@ -37,6 +42,16 @@ public record PlatformUserDetails(
         Set<String> groupPermissions,
         Set<String> effectivePermissions)
         implements UserDetails {
+
+    public PlatformUserDetails {
+        groups = immutableSet(groups);
+        directRoles = immutableSet(directRoles);
+        groupRoles = immutableSet(groupRoles);
+        effectiveRoles = immutableSet(effectiveRoles);
+        directPermissions = immutableSet(directPermissions);
+        groupPermissions = immutableSet(groupPermissions);
+        effectivePermissions = immutableSet(effectivePermissions);
+    }
 
     public PlatformUserDetails(
             UUID userId,
@@ -84,11 +99,13 @@ public record PlatformUserDetails(
     }
 
     @Override
+    @JsonIgnore
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of();
     }
 
     @Override
+    @JsonIgnore
     public String getPassword() {
         return password;
     }
@@ -99,21 +116,25 @@ public record PlatformUserDetails(
     }
 
     @Override
+    @JsonIgnore
     public boolean isAccountNonExpired() {
         return true;
     }
 
     @Override
+    @JsonIgnore
     public boolean isAccountNonLocked() {
         return accountStatus != AccountStatus.LOCKED;
     }
 
     @Override
+    @JsonIgnore
     public boolean isCredentialsNonExpired() {
         return !passwordResetRequired;
     }
 
     @Override
+    @JsonIgnore
     public boolean isEnabled() {
         return accountStatus == AccountStatus.ACTIVE
                 && tenantStatus == TenantStatus.ACTIVE
@@ -124,5 +145,10 @@ public record PlatformUserDetails(
     public String toString() {
         return "PlatformUserDetails[userId=%s, tenantId=%s, username=%s, accountStatus=%s]"
                 .formatted(userId, tenantId, username, accountStatus);
+    }
+
+    private static Set<String> immutableSet(Set<String> values) {
+        return java.util.Collections.unmodifiableSet(
+                values == null ? new LinkedHashSet<>() : new LinkedHashSet<>(values));
     }
 }

@@ -93,7 +93,7 @@ class RepositoryRegisteredClientRepositoryTests {
     }
 
     @Test
-    void mappedRegisteredClientUsesThirtyMinuteSelfContainedAccessTokens() {
+    void mappedRegisteredClientUsesBoundedRotatingTokenLifetimes() {
         saveConfidentialClient();
 
         RegisteredClient registeredClient = registeredClientRepository.findByClientId("registered-confidential");
@@ -101,7 +101,12 @@ class RepositoryRegisteredClientRepositoryTests {
         assertThat(registeredClient.getTokenSettings().getAccessTokenFormat())
                 .isEqualTo(OAuth2TokenFormat.SELF_CONTAINED);
         assertThat(registeredClient.getTokenSettings().getAccessTokenTimeToLive())
-                .isEqualTo(Duration.ofMinutes(30));
+                .isEqualTo(Duration.ofMinutes(10));
+        assertThat(registeredClient.getTokenSettings().getRefreshTokenTimeToLive())
+                .isEqualTo(Duration.ofHours(8));
+        assertThat(registeredClient.getTokenSettings().getAuthorizationCodeTimeToLive())
+                .isEqualTo(Duration.ofMinutes(5));
+        assertThat(registeredClient.getTokenSettings().isReuseRefreshTokens()).isFalse();
     }
 
     @Test

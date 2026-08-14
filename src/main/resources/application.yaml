@@ -18,17 +18,27 @@ iam:
     allowed-origins: ${IAM_ALLOWED_ORIGINS}
   oauth:
     issuer: ${IAM_OAUTH_ISSUER}
+    access-token-time-to-live: ${IAM_ACCESS_TOKEN_TTL:PT10M}
+    refresh-token-time-to-live: ${IAM_REFRESH_TOKEN_TTL:PT8H}
+    authorization-code-time-to-live: ${IAM_AUTHORIZATION_CODE_TTL:PT5M}
+    authorization-cleanup-interval: ${IAM_AUTHORIZATION_CLEANUP_INTERVAL:PT1H}
+  session:
+    absolute-timeout: ${IAM_SESSION_ABSOLUTE_TIMEOUT:PT8H}
   security:
     secret-encryption-key: ${IAM_SECRET_ENCRYPTION_KEY}
     signing-key-file: ${IAM_SIGNING_KEY_FILE}
+    allow-signing-key-generation: false
 
 app:
   admin-console:
     frontend-base-url: ${IAM_ADMIN_CONSOLE_URL}
+    client-id: ${IAM_ADMIN_CONSOLE_CLIENT_ID:identityforge-console}
 
 server:
   servlet:
     session:
+      timeout: ${IAM_SESSION_IDLE_TIMEOUT:15m}
+      tracking-modes: cookie
       cookie:
         http-only: true
         same-site: lax

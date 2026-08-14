@@ -206,13 +206,14 @@ public class UserApplicationService {
                     throw new ValidationException("Username already exists in tenant");
                 });
         AccountStatus previousStatus = user.getAccountStatus();
+        boolean usernameChanged = !user.getNormalizedUsername().equals(normalizedUsername);
         user.setUsername(username);
         user.setDisplayName(displayName);
         user.setEmail(email == null || email.isBlank()
                 ? null
                 : identityValue(() -> IdentityAttributePolicy.normalizeEmail(email)));
         user.setAccountStatus(accountStatus);
-        if (accountStatus != previousStatus) {
+        if (usernameChanged || accountStatus != previousStatus) {
             incrementSecurityVersion(user);
         }
         User savedUser = userRepository.save(user);

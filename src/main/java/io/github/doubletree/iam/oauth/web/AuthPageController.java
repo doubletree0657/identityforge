@@ -163,6 +163,21 @@ public class AuthPageController {
         return redirect("/login?logout");
     }
 
+    @GetMapping(value = "/logout", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> logout(HttpServletRequest request, Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return redirect("/login");
+        }
+        return html("""
+                <h1>Sign out</h1>
+                <p class="lede">End this browser session and revoke tokens issued to the Admin Console?</p>
+                <form method="post" action="/logout">
+                  %s
+                  <button type="submit">Sign out</button>
+                </form>
+                """.formatted(csrfInput(request)));
+    }
+
     private Authentication pendingAuthentication(HttpSession session) {
         if (session == null) {
             return null;
@@ -233,6 +248,8 @@ public class AuthPageController {
     private ResponseEntity<String> html(String body) {
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_HTML)
+                .header("Cache-Control", "no-store")
+                .header("Pragma", "no-cache")
                 .body("""
                         <!doctype html>
                         <html lang="en">

@@ -29,6 +29,7 @@ public class OAuth2ConsentApplicationService {
     private final UserRepository userRepository;
     private final AdminAuthorizationService adminAuthorizationService;
     private final AuditApplicationService auditApplicationService;
+    private final OAuth2AuthorizationLifecycleService authorizationLifecycleService;
 
     public OAuth2ConsentApplicationService(
             JdbcOperations jdbcOperations,
@@ -36,13 +37,15 @@ public class OAuth2ConsentApplicationService {
             ClientRepository clientRepository,
             UserRepository userRepository,
             AdminAuthorizationService adminAuthorizationService,
-            AuditApplicationService auditApplicationService) {
+            AuditApplicationService auditApplicationService,
+            OAuth2AuthorizationLifecycleService authorizationLifecycleService) {
         this.jdbcOperations = jdbcOperations;
         this.authorizationConsentService = authorizationConsentService;
         this.clientRepository = clientRepository;
         this.userRepository = userRepository;
         this.adminAuthorizationService = adminAuthorizationService;
         this.auditApplicationService = auditApplicationService;
+        this.authorizationLifecycleService = authorizationLifecycleService;
     }
 
     @Transactional(readOnly = true)
@@ -114,6 +117,7 @@ public class OAuth2ConsentApplicationService {
         var consent = authorizationConsentService.findById(client.getId().toString(), user.getUsername());
         if (consent != null) {
             authorizationConsentService.remove(consent);
+            authorizationLifecycleService.revokeUserClientAuthorizations(user.getId(), client.getClientId());
             auditApplicationService.recordEvent(
                     user.getTenant().getId(), "OAUTH2_CONSENT_REVOKED", "USER", user.getId());
         }

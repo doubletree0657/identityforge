@@ -108,11 +108,16 @@ pairwise subject identifiers and advanced claim mapping remain future work.
 
 ### Token Lifecycle and Consents
 
-- Refresh token foundation for supported confidential authorization-code
-  clients.
-- OAuth2 token revocation endpoint at `/oauth2/revoke`.
+- JDBC-backed authorization state with bounded refresh-token rotation and
+  hashed replay detection for
+  supported confidential authorization-code clients.
+- OAuth2 token revocation endpoint at `/oauth2/revoke`; revocation and consent
+  removal invalidate the complete local authorization family.
 - Safe consent listing and revocation for current users and administrators.
 - JDBC-backed consent storage.
+- Ten-minute access tokens, security-state invalidation, and hourly expired
+  authorization cleanup. See
+  [session and token hardening](docs/security/session-and-token-hardening.md).
 
 ### Security and Audit
 
@@ -122,6 +127,8 @@ pairwise subject identifiers and advanced claim mapping remain future work.
   as keyed digests, shown once, consumed atomically, and replaceable as a set.
 - Audit events for identity administration, authentication, consent, token
   lifecycle, and other security-sensitive actions.
+- Bounded browser sessions, session-fixation protection, POST+CSRF logout,
+  CSRF-protected consent, and stateless bearer-only Admin/SCIM API boundaries.
 - Safe DTOs and one-time secret display rules that avoid exposing password
   hashes, TOTP ciphertext, client secret hashes, authorization codes, or tokens.
 
@@ -462,7 +469,7 @@ platform.
   bulk, nested groups, extensions, attribute projection, and the complete
   filter grammar remain out of scope.
 - The frontend is functional but is not a fully polished enterprise console.
-- Managed key rotation, production secret storage, session management, rate limiting,
+- Managed key rotation, distributed session/token infrastructure, rate limiting,
   observability, high availability, and operational hardening remain future
   work.
 

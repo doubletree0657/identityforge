@@ -134,6 +134,25 @@ more depth.
 - JDBC-backed consent storage, safe consent listing, and consent revocation.
 - Token lifecycle and consent audit events without token or secret values.
 
+### Production Session and Token Hardening
+
+- Browser sessions have bounded idle and absolute lifetimes, session-fixation
+  protection, security-state revalidation, secure cookie defaults, and
+  non-cacheable authentication pages.
+- Logout is a CSRF-protected POST that invalidates the session and revokes Admin
+  Console grants; browser consent remains CSRF protected while Admin/SCIM APIs
+  are isolated as stateless bearer-only boundaries.
+- OAuth2 authorizations are JDBC-backed, refresh tokens rotate on use with
+  hashed replay detection,
+  revocation removes the full authorization family, and expired grants are
+  pruned.
+- User, tenant, client, and resource-server security mutations invalidate
+  affected persisted grants; IdentityForge APIs enforce authorization state in
+  addition to JWT signature and user security version.
+- Token/session lifecycle audit events avoid credentials, and production
+  signing-key, secret, rotation, and independent-resource-server revocation
+  practices are documented.
+
 ### OIDC UserInfo and ID Token Claims
 
 - Stable `sub` values based on immutable user IDs.
@@ -174,7 +193,7 @@ more depth.
 - SCIM bulk, nested groups, extensions, attribute projection, POST search, and
   the complete filter grammar remain outside the supported subset.
 - The frontend is functional but is not a fully polished enterprise console.
-- Managed signing-key rotation, session management, rate limiting,
+- Managed signing-key rotation, distributed session management, rate limiting,
   observability, high availability, and operational hardening remain future
   work.
 
@@ -185,13 +204,6 @@ more depth.
 - Add current screenshots and a concise visual demo narrative.
 - Keep README walkthroughs aligned with the implemented Admin Console.
 - Improve reviewer orientation without overstating product maturity.
-
-### Production Session and Token Hardening
-
-- Evaluate durable distributed authorization and token storage.
-- Harden browser session, logout, CSRF, revocation, and token lifecycle
-  behavior.
-- Define production signing key, secret, and rotation practices.
 
 ### Frontend UX Polish
 

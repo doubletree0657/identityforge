@@ -169,6 +169,15 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("iam.write")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("clientSecret"))));
 
+        var approvalParams = UriComponentsBuilder.fromUriString(approvalConsentUrl).build().getQueryParams();
+        mockMvc.perform(post("/oauth2/authorize")
+                        .session(approvalSession.session())
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("client_id", approvalParams.getFirst("client_id"))
+                        .param("state", approvalParams.getFirst("state"))
+                        .param("scope", "iam.read"))
+                .andExpect(status().isForbidden());
+
         String approvalRedirect = submitConsent(
                 approvalSession.session(), approvalConsentUrl, fixture.client().client().getClientId(), true);
         assertThat(extractCode(approvalRedirect, "approval-state")).isNotBlank();
@@ -359,9 +368,30 @@ class OAuth2AuthorizationCodeLoginFlowTests {
 
         assertThat(refreshedToken.accessToken()).isNotBlank();
         assertThat(refreshedToken.refreshToken()).isNotBlank();
+        assertThat(refreshedToken.refreshToken()).isNotEqualTo(initialToken.refreshToken());
         assertThat(jwtDecoder.decode(refreshedToken.accessToken()).getClaimAsStringList("scope"))
                 .containsExactly("iam.read");
         assertThat(auditLogRepository.findByAction("OAUTH2_TOKEN_REFRESHED")).isNotEmpty();
+
+        mockMvc.perform(post("/oauth2/token")
+                        .with(httpBasic(fixture.client().client().getClientId(), fixture.client().clientSecret()))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "refresh_token")
+                        .param("refresh_token", initialToken.refreshToken()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_grant"));
+        assertThat(auditLogRepository.findByAction("OAUTH2_REFRESH_TOKEN_REUSE_DETECTED")).isNotEmpty();
+
+        mockMvc.perform(post("/oauth2/token")
+                        .with(httpBasic(fixture.client().client().getClientId(), fixture.client().clientSecret()))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "refresh_token")
+                        .param("refresh_token", refreshedToken.refreshToken()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_grant"));
+        mockMvc.perform(get("/api/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + refreshedToken.accessToken()))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -413,7 +443,30 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                         .param("refresh_token", initialToken.refreshToken()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("invalid_grant"));
-        assertThat(auditLogRepository.findByAction("OAUTH2_TOKEN_REVOKED")).isNotEmpty();
+        mockMvc.perform(get("/api/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + initialToken.accessToken()))
+                .andExpect(status().isUnauthorized());
+        assertThat(auditLogRepository.findByAction("OAUTH2_TOKEN_FAMILY_REVOKED")).isNotEmpty();
+    }
+
+    @Test
+    void securityStateChangeInvalidatesAccessAndRefreshTokens() throws Exception {
+        FlowFixture fixture = createFlowFixture();
+        TokenResponse token = completeAuthorizationCodeFlow(
+                fixture, "iam.read iam.write", "security-invalidation-state");
+
+        userApplicationService.requirePasswordReset(fixture.user().getId());
+
+        mockMvc.perform(get("/api/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.accessToken()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/oauth2/token")
+                        .with(httpBasic(fixture.client().client().getClientId(), fixture.client().clientSecret()))
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "refresh_token")
+                        .param("refresh_token", token.refreshToken()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_grant"));
     }
 
     @Test
@@ -459,6 +512,10 @@ class OAuth2AuthorizationCodeLoginFlowTests {
                         .param("userId", fixture.user().getId().toString())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.accessToken()))
                 .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.accessToken()))
+                .andExpect(status().isUnauthorized());
 
         String secondConsentUrl = expectConsentRedirect(
                 authenticatedSession.session(),

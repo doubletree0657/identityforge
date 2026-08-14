@@ -6,6 +6,7 @@ import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import io.github.doubletree.iam.audit.application.AuditApplicationService;
+import io.github.doubletree.iam.oauth.application.OAuth2AuthorizationLifecycleService;
 import io.github.doubletree.iam.applications.infrastructure.persistence.ClientRepository;
 import io.github.doubletree.iam.directory.access.infrastructure.AdminApiAuthorizationManager;
 import io.github.doubletree.iam.authentication.infrastructure.MfaAuthenticationSuccessHandler;
@@ -44,7 +45,10 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import io.github.doubletree.iam.authentication.application.UserSecurityStateService;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationConsentService;
+import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationConsentService;
+import org.springframework.security.oauth2.server.authorization.JdbcOAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService;
 import org.springframework.security.oauth2.server.authorization.authentication.OAuth2AccessTokenAuthenticationToken;
@@ -67,6 +71,10 @@ import org.springframework.security.web.authentication.LoginUrlAuthenticationEnt
 import org.springframework.security.web.authentication.logout.CookieClearingLogoutHandler;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2ErrorAuthenticationFailureHandler;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
@@ -89,7 +97,10 @@ public class AuthorizationServerConfiguration {
             HttpSecurity http,
             AuditApplicationService auditApplicationService,
             ObjectProvider<ClientRepository> clientRepository,
-            OidcIdentityClaims oidcIdentityClaims) throws Exception {
+            OidcIdentityClaims oidcIdentityClaims,
+            OAuth2AuthorizationLifecycleService authorizationLifecycleService,
+            UserSecurityStateService securityStateService,
+            @Value("${iam.session.absolute-timeout:PT8H}") Duration sessionAbsoluteTimeout) throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 OAuth2AuthorizationServerConfigurer.authorizationServer();
         RequestMatcher authorizationServerEndpointsMatcher = authorizationServerConfigurer.getEndpointsMatcher();
@@ -120,12 +131,33 @@ public class AuthorizationServerConfiguration {
                                 }))
                         .tokenEndpoint(tokenEndpoint -> tokenEndpoint
                                 .accessTokenResponseHandler((request, response, authentication) -> {
+                                    recordRefreshTokenRotation(
+                                            request, authentication, authorizationLifecycleService);
                                     auditTokenRefresh(request, authentication, auditApplicationService, clientRepository);
                                     sendTokenResponse(response, authentication);
+                                })
+                                .errorResponseHandler((request, response, exception) -> {
+                                    response.setHeader("Cache-Control", "no-store");
+                                    response.setHeader("Pragma", "no-cache");
+                                    boolean reuseDetected = "refresh_token".equals(
+                                                    request.getParameter(OAuth2ParameterNames.GRANT_TYPE))
+                                            && authorizationLifecycleService.revokeReusedRefreshToken(
+                                                    request.getParameter(OAuth2ParameterNames.REFRESH_TOKEN));
+                                    auditTokenFailure(
+                                            request,
+                                            exception,
+                                            reuseDetected,
+                                            auditApplicationService,
+                                            clientRepository);
+                                    new OAuth2ErrorAuthenticationFailureHandler()
+                                            .onAuthenticationFailure(request, response, exception);
                                 }))
                         .tokenRevocationEndpoint(tokenRevocationEndpoint -> tokenRevocationEndpoint
                                 .revocationResponseHandler((request, response, authentication) -> {
-                                    auditTokenRevocation(authentication, auditApplicationService, clientRepository);
+                                    boolean revoked = authorizationLifecycleService.revokeAuthorizationFamily(
+                                            request.getParameter(OAuth2ParameterNames.TOKEN));
+                                    auditTokenRevocation(
+                                            authentication, revoked, auditApplicationService, clientRepository);
                                     response.setStatus(HttpStatus.OK.value());
                                 })))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
@@ -137,19 +169,26 @@ public class AuthorizationServerConfiguration {
                                 new LoginUrlAuthenticationEntryPoint("/login"),
                                 new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
                 .cors(Customizer.withDefaults())
-                .csrf(csrf -> csrf.ignoringRequestMatchers(authorizationServerEndpointsMatcher));
+                .headers(headers -> headers
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(browserContentSecurityPolicy()))
+                        .referrerPolicy(referrer -> referrer
+                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
+                .csrf(csrf -> csrf.ignoringRequestMatchers(
+                        endpoint(HttpMethod.POST, "/oauth2/token"),
+                        endpoint(HttpMethod.POST, "/oauth2/revoke"),
+                        endpoint(HttpMethod.POST, "/oauth2/introspect"),
+                        endpoint(HttpMethod.POST, "/oauth2/device_authorization")))
+                .addFilterAfter(
+                        new SessionSecurityStateFilter(
+                                securityStateService, auditApplicationService, sessionAbsoluteTimeout),
+                        SecurityContextHolderFilter.class);
 
         return http.build();
     }
 
     @Bean
-    @Order(Ordered.LOWEST_PRECEDENCE)
-    SecurityFilterChain applicationSecurityFilterChain(
-            HttpSecurity http,
-            MfaAuthenticationSuccessHandler mfaAuthenticationSuccessHandler,
-            AuditApplicationService auditApplicationService,
-            @Value("${app.admin-console.frontend-base-url}") String adminConsoleFrontendBaseUrl)
-            throws Exception {
+    @Order(2)
+    SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
         RequestMatcher apiEndpointsMatcher = new OrRequestMatcher(
                 PathPatternRequestMatcher.withDefaults().matcher("/api/**"),
                 PathPatternRequestMatcher.withDefaults().matcher("/scim/v2/**"));
@@ -157,10 +196,9 @@ public class AuthorizationServerConfiguration {
                 PathPatternRequestMatcher.withDefaults().matcher("/scim/v2/**");
 
         http
+                .securityMatcher(apiEndpointsMatcher)
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/health").permitAll()
-                        .requestMatchers("/login", "/login/mfa", "/logout").permitAll()
-                        .requestMatchers("/oauth2/consent").authenticated()
                         .requestMatchers("/api/me").hasAuthority("SCOPE_iam.read")
                         .requestMatchers(HttpMethod.GET, "/api/oauth2/consents/me").hasAuthority("SCOPE_iam.read")
                         .requestMatchers(HttpMethod.DELETE, "/api/oauth2/consents/me/*").hasAuthority("SCOPE_iam.write")
@@ -179,19 +217,7 @@ public class AuthorizationServerConfiguration {
                         .access(new AdminApiAuthorizationManager("iam.write"))
                         .requestMatchers("/scim/v2/**")
                         .access(new AdminApiAuthorizationManager("iam.read"))
-                        .anyRequest().permitAll())
-                .formLogin(form -> form
-                        .loginPage("/login")
-                        .failureUrl("/login?error")
-                        .successHandler(mfaAuthenticationSuccessHandler)
-                        .permitAll())
-                .logout(logout -> logout
-                        .logoutRequestMatcher(PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/logout"))
-                        .addLogoutHandler(new SecurityContextLogoutHandler())
-                        .addLogoutHandler(new CookieClearingLogoutHandler("JSESSIONID"))
-                        .invalidateHttpSession(true)
-                        .clearAuthentication(true)
-                        .logoutSuccessHandler(logoutSuccessHandler(auditApplicationService, adminConsoleFrontendBaseUrl)))
+                        .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .defaultAuthenticationEntryPointFor(
                                 (request, response, exception) -> {
@@ -214,7 +240,61 @@ public class AuthorizationServerConfiguration {
                                 apiEndpointsMatcher))
                 .cors(Customizer.withDefaults())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
-                .csrf(csrf -> csrf.ignoringRequestMatchers(apiEndpointsMatcher));
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .requestCache(cache -> cache.disable())
+                .csrf(csrf -> csrf.disable());
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(Ordered.LOWEST_PRECEDENCE)
+    SecurityFilterChain browserSecurityFilterChain(
+            HttpSecurity http,
+            MfaAuthenticationSuccessHandler mfaAuthenticationSuccessHandler,
+            AuditApplicationService auditApplicationService,
+            UserSecurityStateService securityStateService,
+            OAuth2AuthorizationLifecycleService authorizationLifecycleService,
+            @Value("${app.admin-console.frontend-base-url}") String adminConsoleFrontendBaseUrl,
+            @Value("${app.admin-console.client-id:identityforge-console}") String adminConsoleClientId,
+            @Value("${server.servlet.session.cookie.name:JSESSIONID}") String sessionCookieName,
+            @Value("${iam.session.absolute-timeout:PT8H}") Duration sessionAbsoluteTimeout)
+            throws Exception {
+        http
+                .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/login", "/login/mfa", "/logout").permitAll()
+                        .requestMatchers("/oauth2/consent").authenticated()
+                        .anyRequest().permitAll())
+                .formLogin(form -> form
+                        .loginPage("/login")
+                        .failureUrl("/login?error")
+                        .successHandler(mfaAuthenticationSuccessHandler)
+                        .permitAll())
+                .logout(logout -> logout
+                        .logoutRequestMatcher(endpoint(HttpMethod.POST, "/logout"))
+                        .addLogoutHandler(new SecurityContextLogoutHandler())
+                        .addLogoutHandler((request, response, authentication) -> {
+                            if (authentication != null
+                                    && authentication.getPrincipal() instanceof PlatformUserDetails userDetails) {
+                                authorizationLifecycleService.revokeUserClientAuthorizations(
+                                        userDetails.userId(), adminConsoleClientId);
+                            }
+                        })
+                        .addLogoutHandler(new CookieClearingLogoutHandler(sessionCookieName))
+                        .invalidateHttpSession(true)
+                        .clearAuthentication(true)
+                        .logoutSuccessHandler(logoutSuccessHandler(auditApplicationService, adminConsoleFrontendBaseUrl)))
+                .cors(Customizer.withDefaults())
+                .headers(headers -> headers
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(browserContentSecurityPolicy()))
+                        .referrerPolicy(referrer -> referrer
+                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
+                .sessionManagement(session -> session
+                        .sessionFixation(fixation -> fixation.changeSessionId()))
+                .addFilterAfter(
+                        new SessionSecurityStateFilter(
+                                securityStateService, auditApplicationService, sessionAbsoluteTimeout),
+                        SecurityContextHolderFilter.class);
 
         return http.build();
     }
@@ -240,12 +320,85 @@ public class AuthorizationServerConfiguration {
         auditByRegisteredClientId(
                 tokenAuthentication.getRegisteredClient().getId(),
                 "OAUTH2_TOKEN_REFRESHED",
+                false,
+                null,
                 auditApplicationService,
                 clientRepository);
     }
 
+    private void recordRefreshTokenRotation(
+            HttpServletRequest request,
+            Authentication authentication,
+            OAuth2AuthorizationLifecycleService authorizationLifecycleService) {
+        if (!"refresh_token".equals(request.getParameter(OAuth2ParameterNames.GRANT_TYPE))
+                || !(authentication instanceof OAuth2AccessTokenAuthenticationToken tokenAuthentication)
+                || tokenAuthentication.getRefreshToken() == null) {
+            return;
+        }
+        authorizationLifecycleService.recordRefreshTokenRotation(
+                request.getParameter(OAuth2ParameterNames.REFRESH_TOKEN),
+                tokenAuthentication.getRefreshToken().getTokenValue());
+    }
+
+    private void auditTokenFailure(
+            HttpServletRequest request,
+            AuthenticationException exception,
+            boolean reuseDetected,
+            AuditApplicationService auditApplicationService,
+            ObjectProvider<ClientRepository> clientRepository) {
+        if (!"refresh_token".equals(request.getParameter(OAuth2ParameterNames.GRANT_TYPE))) {
+            return;
+        }
+        ClientRepository repository = clientRepository.getIfAvailable();
+        String clientId = authenticatedClientId();
+        if (!StringUtils.hasText(clientId)) {
+            clientId = request.getParameter(OAuth2ParameterNames.CLIENT_ID);
+        }
+        if (!StringUtils.hasText(clientId)) {
+            clientId = basicClientId(request);
+        }
+        if (repository == null || !StringUtils.hasText(clientId)) {
+            return;
+        }
+        String reason = exception instanceof org.springframework.security.oauth2.core.OAuth2AuthenticationException oauth
+                ? oauth.getError().getErrorCode().toUpperCase(java.util.Locale.ROOT)
+                : "AUTHENTICATION_FAILED";
+        repository.findByClientId(clientId).ifPresent(client -> auditApplicationService.recordFailure(
+                client.getTenant().getId(),
+                reuseDetected ? "OAUTH2_REFRESH_TOKEN_REUSE_DETECTED" : "OAUTH2_TOKEN_REFRESH_FAILED",
+                "CLIENT",
+                client.getId(),
+                reason));
+    }
+
+    private String authenticatedClientId() {
+        Authentication authentication = org.springframework.security.core.context.SecurityContextHolder
+                .getContext()
+                .getAuthentication();
+        return authentication instanceof OAuth2ClientAuthenticationToken clientAuthentication
+                        && clientAuthentication.getRegisteredClient() != null
+                ? clientAuthentication.getRegisteredClient().getClientId()
+                : null;
+    }
+
+    private String basicClientId(HttpServletRequest request) {
+        String authorization = request.getHeader("Authorization");
+        if (authorization == null || !authorization.regionMatches(true, 0, "Basic ", 0, 6)) {
+            return null;
+        }
+        try {
+            String credentials = new String(
+                    java.util.Base64.getDecoder().decode(authorization.substring(6)), StandardCharsets.UTF_8);
+            int separator = credentials.indexOf(':');
+            return separator < 0 ? null : UriUtils.decode(credentials.substring(0, separator), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
     private void auditTokenRevocation(
             Authentication authentication,
+            boolean revoked,
             AuditApplicationService auditApplicationService,
             ObjectProvider<ClientRepository> clientRepository) {
         if (!(authentication instanceof OAuth2TokenRevocationAuthenticationToken revocationAuthentication)
@@ -255,7 +408,9 @@ public class AuthorizationServerConfiguration {
         }
         auditByRegisteredClientId(
                 clientAuthentication.getRegisteredClient().getId(),
-                "OAUTH2_TOKEN_REVOKED",
+                revoked ? "OAUTH2_TOKEN_FAMILY_REVOKED" : "OAUTH2_TOKEN_REVOCATION_NOOP",
+                !revoked,
+                revoked ? null : "TOKEN_NOT_ACTIVE",
                 auditApplicationService,
                 clientRepository);
     }
@@ -263,6 +418,8 @@ public class AuthorizationServerConfiguration {
     private void auditByRegisteredClientId(
             String registeredClientId,
             String action,
+            boolean failure,
+            String reasonCode,
             AuditApplicationService auditApplicationService,
             ObjectProvider<ClientRepository> clientRepository) {
         ClientRepository repository = clientRepository.getIfAvailable();
@@ -270,9 +427,15 @@ public class AuthorizationServerConfiguration {
             return;
         }
         try {
-            repository.findById(UUID.fromString(registeredClientId))
-                    .ifPresent(client -> auditApplicationService.recordEvent(
-                            client.getTenant().getId(), action, "CLIENT", client.getId()));
+            repository.findById(UUID.fromString(registeredClientId)).ifPresent(client -> {
+                if (failure) {
+                    auditApplicationService.recordFailure(
+                            client.getTenant().getId(), action, "CLIENT", client.getId(), reasonCode);
+                } else {
+                    auditApplicationService.recordEvent(
+                            client.getTenant().getId(), action, "CLIENT", client.getId());
+                }
+            });
         } catch (IllegalArgumentException ignored) {
             // Registered client ids are internal UUIDs for persisted clients.
         }
@@ -281,6 +444,8 @@ public class AuthorizationServerConfiguration {
     private void sendTokenResponse(
             HttpServletResponse response,
             Authentication authentication) throws IOException {
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Pragma", "no-cache");
         OAuth2AccessTokenAuthenticationToken accessTokenAuthentication =
                 (OAuth2AccessTokenAuthenticationToken) authentication;
         var accessToken = accessTokenAuthentication.getAccessToken();
@@ -425,6 +590,16 @@ public class AuthorizationServerConfiguration {
     }
 
     @Bean
+    OAuth2AuthorizationService authorizationService(
+            ObjectProvider<JdbcOperations> jdbcOperations,
+            RegisteredClientRepository registeredClientRepository) {
+        JdbcOperations operations = jdbcOperations.getIfAvailable();
+        return operations == null
+                ? new InMemoryOAuth2AuthorizationService()
+                : new JdbcOAuth2AuthorizationService(operations, registeredClientRepository);
+    }
+
+    @Bean
     JWKSource<SecurityContext> jwkSource(SigningKeyProvider signingKeyProvider) {
         return new ImmutableJWKSet<>(new JWKSet(signingKeyProvider.currentKey()));
     }
@@ -433,12 +608,14 @@ public class AuthorizationServerConfiguration {
     JwtDecoder jwtDecoder(
             JWKSource<SecurityContext> jwkSource,
             AuthorizationServerSettings settings,
-            UserSecurityStateService securityStateService) {
+            UserSecurityStateService securityStateService,
+            OAuth2AuthorizationService authorizationService) {
         JwtDecoder decoder = OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
         if (decoder instanceof NimbusJwtDecoder nimbusJwtDecoder) {
             nimbusJwtDecoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                     JwtValidators.createDefaultWithIssuer(settings.getIssuer()),
-                    new UserSecurityStateTokenValidator(securityStateService)));
+                    new UserSecurityStateTokenValidator(securityStateService),
+                    new AuthorizationStateTokenValidator(authorizationService)));
         }
         return decoder;
     }
@@ -500,6 +677,15 @@ public class AuthorizationServerConfiguration {
         } catch (IllegalArgumentException exception) {
             return null;
         }
+    }
+
+    private static RequestMatcher endpoint(HttpMethod method, String path) {
+        return PathPatternRequestMatcher.withDefaults().matcher(method, path);
+    }
+
+    private static String browserContentSecurityPolicy() {
+        return "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; "
+                + "frame-ancestors 'none'; base-uri 'none'";
     }
 
 }

@@ -249,7 +249,7 @@ class HttpLoginFlowTests {
     }
 
     @Test
-    void apiEndpointsRemainProtectedByJwtScopesAfterLogin() throws Exception {
+    void apiEndpointsIgnoreBrowserSessionsAndRequireBearerTokens() throws Exception {
         createUser("http-api-boundary-user", PASSWORD, AccountStatus.ACTIVE);
         MockHttpSession session = loginSession("http-api-boundary-user", PASSWORD);
 
@@ -259,7 +259,7 @@ class HttpLoginFlowTests {
                         .content("""
                                 {"name":"Should Not Be Created By Login Session"}
                                 """))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -291,6 +291,26 @@ class HttpLoginFlowTests {
                 .andExpect(status().isFound())
                 .andExpect(header().string(HttpHeaders.LOCATION,
                         startsWith("http://127.0.0.1:8080/login/oauth2/code/identityforge-dev?")));
+    }
+
+    @Test
+    void securityStateChangeTerminatesAnExistingBrowserSession() throws Exception {
+        User user = createUser("http-stale-session-user", PASSWORD, AccountStatus.ACTIVE);
+        MockHttpSession session = loginSession(user.getUsername(), PASSWORD);
+        PasswordCredential credential = user.getPasswordCredential();
+        credential.setCredentialsVersion(credential.getCredentialsVersion() + 1);
+        userRepository.saveAndFlush(user);
+
+        mockMvc.perform(get(authorizationRequest("stale-session-state"))
+                        .session(session)
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("http://localhost/login"));
+
+        assertThat(session.isInvalid()).isTrue();
+        assertThat(auditLogRepository.findByAction("USER_SESSION_REJECTED"))
+                .singleElement()
+                .satisfies(audit -> assertThat(audit.getReasonCode()).isEqualTo("SECURITY_STATE_CHANGED"));
     }
 
     private String authorizationRequest(String state) {

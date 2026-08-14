@@ -2,6 +2,7 @@ package io.github.doubletree.iam.oauth.infrastructure;
 
 import io.github.doubletree.iam.applications.domain.Client;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
@@ -12,6 +13,19 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class RegisteredClientMapper {
+
+    private final Duration accessTokenTimeToLive;
+    private final Duration refreshTokenTimeToLive;
+    private final Duration authorizationCodeTimeToLive;
+
+    public RegisteredClientMapper(
+            @Value("${iam.oauth.access-token-time-to-live:PT10M}") Duration accessTokenTimeToLive,
+            @Value("${iam.oauth.refresh-token-time-to-live:PT8H}") Duration refreshTokenTimeToLive,
+            @Value("${iam.oauth.authorization-code-time-to-live:PT5M}") Duration authorizationCodeTimeToLive) {
+        this.accessTokenTimeToLive = accessTokenTimeToLive;
+        this.refreshTokenTimeToLive = refreshTokenTimeToLive;
+        this.authorizationCodeTimeToLive = authorizationCodeTimeToLive;
+    }
 
     public RegisteredClient toRegisteredClient(Client client) {
         RegisteredClient.Builder builder = RegisteredClient.withId(client.getId().toString())
@@ -24,7 +38,10 @@ public class RegisteredClientMapper {
                         .build())
                 .tokenSettings(TokenSettings.builder()
                         .accessTokenFormat(OAuth2TokenFormat.SELF_CONTAINED)
-                        .accessTokenTimeToLive(Duration.ofMinutes(30))
+                        .accessTokenTimeToLive(accessTokenTimeToLive)
+                        .refreshTokenTimeToLive(refreshTokenTimeToLive)
+                        .authorizationCodeTimeToLive(authorizationCodeTimeToLive)
+                        .reuseRefreshTokens(false)
                         .build());
 
         client.getAuthenticationMethods()

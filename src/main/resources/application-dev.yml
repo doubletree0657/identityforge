@@ -37,3 +37,4 @@ iam:
   security:
     secret-encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     signing-key-file: .identityforge/dev-signing-key.properties
+    allow-signing-key-generation: true
