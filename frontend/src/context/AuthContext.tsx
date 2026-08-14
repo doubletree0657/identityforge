@@ -1,16 +1,19 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CurrentUser, getCurrentUser } from '../api/auth';
-import { isAccessTokenExpired } from '../api/storage';
+import { getAccessToken, isAccessTokenExpired } from '../api/storage';
+import { isAuthenticationFailure } from '../utils/authErrors';
 
-interface AuthContextValue {
+export interface AuthContextValue {
   user?: CurrentUser;
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
   hasPermission: (permission: string) => boolean;
   sessionExpired: boolean;
+  authenticationFailed: boolean;
   error: Error | null;
+  retry: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -27,11 +30,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('admin-console-settings-changed', onAuthStorageChanged);
   }, [queryClient]);
 
-  const sessionExpired = isAccessTokenExpired();
+  const hasAccessToken = Boolean(getAccessToken());
+  const sessionExpired = hasAccessToken && isAccessTokenExpired();
   const currentUser = useQuery({
     queryKey: ['current-user'],
     queryFn: getCurrentUser,
-    enabled: !sessionExpired,
+    enabled: hasAccessToken && !sessionExpired,
     retry: false,
   });
   const roles = currentUser.data?.effectiveRoles ?? currentUser.data?.roles ?? [];
@@ -48,7 +52,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       || permissions.some((permission) => SYSTEM_IAM_PERMISSIONS.has(permission)),
     hasPermission,
     sessionExpired,
+    authenticationFailed: isAuthenticationFailure(currentUser.error),
     error: currentUser.error,
+    retry: () => { void currentUser.refetch(); },
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

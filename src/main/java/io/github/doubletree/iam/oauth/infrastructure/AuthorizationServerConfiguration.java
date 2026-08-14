@@ -167,6 +167,9 @@ public class AuthorizationServerConfiguration {
                                 PathPatternRequestMatcher.withDefaults().matcher("/userinfo"))
                         .defaultAuthenticationEntryPointFor(
                                 new LoginUrlAuthenticationEntryPoint("/login"),
+                                endpoint(HttpMethod.GET, "/oauth2/authorize"))
+                        .defaultAuthenticationEntryPointFor(
+                                new LoginUrlAuthenticationEntryPoint("/login"),
                                 new MediaTypeRequestMatcher(MediaType.TEXT_HTML)))
                 .cors(Customizer.withDefaults())
                 .headers(headers -> headers
@@ -609,13 +612,13 @@ public class AuthorizationServerConfiguration {
             JWKSource<SecurityContext> jwkSource,
             AuthorizationServerSettings settings,
             UserSecurityStateService securityStateService,
-            OAuth2AuthorizationService authorizationService) {
+            AccessTokenAuthorizationState authorizationState) {
         JwtDecoder decoder = OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
         if (decoder instanceof NimbusJwtDecoder nimbusJwtDecoder) {
             nimbusJwtDecoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                     JwtValidators.createDefaultWithIssuer(settings.getIssuer()),
                     new UserSecurityStateTokenValidator(securityStateService),
-                    new AuthorizationStateTokenValidator(authorizationService)));
+                    new AuthorizationStateTokenValidator(authorizationState)));
         }
         return decoder;
     }

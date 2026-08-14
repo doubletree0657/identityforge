@@ -10,6 +10,9 @@ after(async () => server.close());
 const flowSource = await readFile(new URL('../src/utils/demoFlows.ts', import.meta.url), 'utf8');
 const flowCompiled = await transformWithEsbuild(flowSource, 'demoFlows.ts', { loader: 'ts', format: 'esm', target: 'es2020' });
 const flows = await import(`data:text/javascript;base64,${Buffer.from(flowCompiled.code).toString('base64')}`);
+const authErrorsSource = await readFile(new URL('../src/utils/authErrors.ts', import.meta.url), 'utf8');
+const authErrorsCompiled = await transformWithEsbuild(authErrorsSource, 'authErrors.ts', { loader: 'ts', format: 'esm', target: 'es2020' });
+const authErrors = await import(`data:text/javascript;base64,${Buffer.from(authErrorsCompiled.code).toString('base64')}`);
 
 test('shared UI states expose accessible status, recovery, and workflow semantics', async () => {
   const { EmptyState, ErrorState, LoadingState } = await server.ssrLoadModule('/src/components/State.tsx');
@@ -73,4 +76,51 @@ test('SCIM demo commands stay tenant-scoped, protocol-shaped, and token-safe', (
   const hostilePath = flows.buildScimCommand({ baseUrl: 'http://localhost:8080', tenantId: 'tenant-id', operation: 'add-member', groupId: "group'; echo unsafe", userId: 'user-id' });
   assert.doesNotMatch(hostilePath, /group'; echo unsafe/);
   assert.match(hostilePath, /group%27%3B%20echo%20unsafe/);
+});
+
+test('only authentication failures are classified as expired sessions', () => {
+  assert.equal(authErrors.isAuthenticationFailure({ status: 401, code: 'unauthorized' }), true);
+  assert.equal(authErrors.isAuthenticationFailure({ status: 500, code: 'server_error' }), false);
+  assert.equal(authErrors.isAuthenticationFailure({ status: 403, code: 'forbidden' }), false);
+  assert.equal(authErrors.isAuthenticationFailure(new Error('Network unavailable')), false);
+});
+
+test('Admin Console bootstrap renders server failures instead of reporting session expiry', async () => {
+  const { AuthGateView } = await server.ssrLoadModule('/src/layout/AuthGate.tsx');
+  const markup = renderToStaticMarkup(AuthGateView({
+    children: 'Dashboard content',
+    auth: {
+      isLoading: false,
+      isAuthenticated: false,
+      isAdmin: false,
+      hasPermission: () => false,
+      sessionExpired: false,
+      authenticationFailed: false,
+      error: { status: 500, code: 'server_error', message: 'The server could not complete this request.' },
+      retry: () => undefined,
+    },
+  }));
+
+  assert.match(markup, /server could not complete this request/i);
+  assert.match(markup, /Try again/);
+  assert.doesNotMatch(markup, /Session expired/);
+});
+
+test('authenticated administrators pass the gate and reach dashboard content', async () => {
+  const { AuthGateView } = await server.ssrLoadModule('/src/layout/AuthGate.tsx');
+  const markup = renderToStaticMarkup(AuthGateView({
+    children: 'Admin Console dashboard',
+    auth: {
+      isLoading: false,
+      isAuthenticated: true,
+      isAdmin: true,
+      hasPermission: () => true,
+      sessionExpired: false,
+      authenticationFailed: false,
+      error: null,
+      retry: () => undefined,
+    },
+  }));
+
+  assert.match(markup, /Admin Console dashboard/);
 });

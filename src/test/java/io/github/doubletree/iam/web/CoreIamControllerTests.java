@@ -43,6 +43,7 @@ import io.github.doubletree.iam.authentication.api.MfaRecoveryCodesResult;
 import io.github.doubletree.iam.authentication.api.MfaStatus;
 import io.github.doubletree.iam.authentication.api.MfaVerificationResult;
 import io.github.doubletree.iam.oauth.infrastructure.AuthorizationServerConfiguration;
+import io.github.doubletree.iam.oauth.infrastructure.AccessTokenAuthorizationState;
 import io.github.doubletree.iam.oauth.infrastructure.FileSigningKeyProvider;
 import io.github.doubletree.iam.oauth.application.OAuth2AuthorizationLifecycleService;
 import io.github.doubletree.iam.authentication.application.UserSecurityStateService;
@@ -95,7 +96,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
+import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -181,6 +186,9 @@ class CoreIamControllerTests {
     @MockitoBean
     private OAuth2AuthorizationLifecycleService authorizationLifecycleService;
 
+    @MockitoBean
+    private AccessTokenAuthorizationState accessTokenAuthorizationState;
+
     private final RequestPostProcessor writeScopeJwt = jwt()
             .jwt(token -> token
                     .claim("tenant_id", TENANT_ID.toString())
@@ -243,6 +251,35 @@ class CoreIamControllerTests {
     void currentUserRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/me"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void publicAuthorizationEndpointUsesInteractiveLoginEntryPointRegardlessOfAcceptHeader() throws Exception {
+        RegisteredClient consoleClient = RegisteredClient.withId(CLIENT_ID.toString())
+                .clientId("identityforge-console")
+                .clientName("IdentityForge Console")
+                .clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .redirectUri("http://localhost:5173/oauth2/callback")
+                .scope("openid")
+                .scope("profile")
+                .scope("iam.read")
+                .scope("iam.write")
+                .clientSettings(ClientSettings.builder().requireProofKey(true).build())
+                .build();
+        when(registeredClientRepository.findByClientId("identityforge-console")).thenReturn(consoleClient);
+
+        mockMvc.perform(get("/oauth2/authorize")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .queryParam("response_type", "code")
+                        .queryParam("client_id", "identityforge-console")
+                        .queryParam("redirect_uri", "http://localhost:5173/oauth2/callback")
+                        .queryParam("scope", "openid profile iam.read iam.write")
+                        .queryParam("state", "entry-point-regression-state")
+                        .queryParam("code_challenge", "0123456789012345678901234567890123456789012")
+                        .queryParam("code_challenge_method", "S256"))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("http://localhost/login"));
     }
 
     @Test
