@@ -10,10 +10,10 @@ management, audit logging, and a separate scope-protected resource-service
 demo. OIDC identity claims and a documented SCIM 2.0 provisioning subset are
 also implemented with explicit privacy and tenant boundaries.
 
-The next phase is not to claim production readiness. It is to improve portfolio
-presentation, complete selected identity protocol foundations, and harden the
-security and operational model where a production deployment would require
-more depth.
+The portfolio presentation and core demonstration slices are complete. The
+next phase is not to claim production readiness; it is to complete selected
+identity protocol foundations and harden the security and operational model
+where a production deployment would require more depth.
 
 ## Completed Major Slices
 
@@ -120,7 +120,8 @@ more depth.
 ### External Payroll Resource Service Demo
 
 - Independently runnable Spring Boot resource server with static demo data and
-  no IdentityForge database or runtime dependency.
+  no IdentityForge database, domain code, session, or process-memory
+  dependency. Its runtime trust is limited to issuer metadata/JWKS retrieval.
 - IdentityForge issuer/JWKS, `payroll-api` audience, expiration, and
   endpoint-specific scope enforcement for `payroll.employee.read`,
   `payroll.salary.read`, and `payroll.salary.write`.
@@ -194,11 +195,32 @@ more depth.
 - Targeted UI rendering and demo-flow tests alongside the existing QR encoder
   test and production frontend build.
 
+### Portfolio Demo Polish and Screenshots
+
+- [Reviewer-first README orientation](../README.md#reviewer-quick-start) with
+  five-, fifteen-, and thirty-minute review paths, an evidence matrix, and one
+  canonical least-privilege proof.
+- A [narrated local walkthrough](demos/portfolio-review.md) connecting tenant
+  boundaries, effective RBAC, OAuth2/OIDC, the external Payroll service, MFA,
+  SCIM, and audit evidence.
+- A [documentation index](README.md) that routes architecture, protocol,
+  security, and decision-record review without requiring the application to
+  run.
+- A reproducible [screenshot capture contract](demos/screenshots.md) with
+  canonical filenames, captions, viewport guidance, current-commit
+  requirements, and explicit exclusion of secrets, tokens, credentials, and
+  fabricated UI images.
+- Claims and limitations aligned with bootstrap defaults, audience boundaries,
+  the implemented SCIM subset, static Payroll data, and remaining production
+  hardening work.
+
 ## Current Limitations
 
 - The project is not production-ready and is not intended to replace a
   production IAM platform.
-- Authorization and token storage is not fully distributed production storage.
+- Authorization grants and consents are JDBC-backed, while browser sessions
+  and some immediate security controls remain node-local; there is no
+  distributed session, denylist, or event-propagation layer.
 - The external Payroll resource service contains static demo data, has no
   persistence, and is not a real business service.
 - MFA attempt throttling remains process-local; distributed throttling and a
@@ -214,14 +236,6 @@ more depth.
 - Managed signing-key rotation, distributed session management, rate limiting,
   observability, high availability, and operational hardening remain future
   work.
-
-## Next Recommended Milestones
-
-### Portfolio Demo Polish and Screenshots
-
-- Add current screenshots and a concise visual demo narrative.
-- Keep README walkthroughs aligned with the implemented Admin Console.
-- Improve reviewer orientation without overstating product maturity.
 
 ## Later Roadmap
 

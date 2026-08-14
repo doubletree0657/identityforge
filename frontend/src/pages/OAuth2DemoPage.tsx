@@ -113,7 +113,7 @@ export function OAuth2DemoPage() {
   function resourceApiCommands(baseUrl: string, applicationScopes: string[]) {
     const employeeStatus = applicationScopes.includes('payroll.employee.read') ? 'expected: 200' : 'expected: 403';
     const salaryReadStatus = applicationScopes.includes('payroll.salary.read') ? 'expected: 200' : 'expected: 403';
-    const salaryWriteStatus = applicationScopes.includes('payroll.salary.write') ? 'expected: 200' : 'expected: 403';
+    const salaryWriteStatus = applicationScopes.includes('payroll.salary.write') ? 'expected: 202' : 'expected: 403';
     const commands: string[] = [
       `# Employees (${employeeStatus})
 curl -H "Authorization: Bearer <ACCESS_TOKEN>" \\

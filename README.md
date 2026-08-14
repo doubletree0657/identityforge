@@ -18,6 +18,39 @@ It is **not production-ready**, is not intended to replace a production IAM
 platform, and requires production hardening before use with real users or
 business data.
 
+## Reviewer Quick Start
+
+Choose the review depth that fits your time:
+
+| Time | Review path | Best starting point |
+| --- | --- | --- |
+| 5 minutes | Understand the product boundaries and strongest proof without running it | [Portfolio Review Guide](docs/demos/portfolio-review.md#five-minute-review-without-running-the-project) |
+| 15 minutes | Run the narrated Admin Console and least-privilege Payroll demo | [Fifteen-Minute Walkthrough](docs/demos/portfolio-review.md#fifteen-minute-narrated-walkthrough) |
+| 30 minutes | Inspect module ownership, security decisions, and protocol limits | [Documentation Map](docs/README.md) |
+| Code review | Trace enforcement from token claims to backend policy and a separate resource service | [Architecture Foundation](docs/architecture/README.md) |
+
+The clearest end-to-end proof is intentionally narrow: request only
+`payroll.employee.read`, receive `200` from the employee endpoint, and receive
+`403` from the salary endpoint with the same otherwise-valid token. That result
+connects persisted client configuration, user authorization, JWT issuance,
+audience binding, and independent resource-server scope enforcement.
+
+### Evidence at a Glance
+
+| Capability | Implemented evidence | Explicit boundary |
+| --- | --- | --- |
+| Tenant IAM and RBAC | Tenant-qualified identities, direct/group roles, effective permissions, concrete Admin API permission checks | Additive RBAC, not a general policy engine |
+| OAuth2 and OIDC | Persisted clients, Authorization Code, PKCE, consent, ID Tokens, scope-aware UserInfo | No pairwise subjects or advanced claim mapping |
+| MFA | Encrypted TOTP, QR enrollment, login challenge, replay prevention, one-time recovery codes | Process-local throttling; no separate recent-auth step-up ceremony |
+| SCIM 2.0 | Users, groups, direct membership, bounded filters/PATCH, ETags, errors, discovery | Documented supported subset, not full conformance |
+| Token lifecycle | JDBC grants/consents, refresh rotation, replay detection, revocation, security-state invalidation | Single-deployment state; no distributed denylist or event propagation |
+| External authorization | Separate Payroll process verifies signature, issuer, time, `payroll-api` audience, and endpoint scope | Static demo data; no business persistence |
+
+Any portfolio screenshots should be captured from the running application—not
+mocked—using the security-safe [Screenshot Capture Guide](docs/demos/screenshots.md).
+The guide defines the canonical visual sequence, filenames, captions, and
+secret-exclusion rules.
+
 ## Why This Project Exists
 
 IAM systems connect authentication, authorization, identity data, security
@@ -34,6 +67,26 @@ The main local demo proves a complete application-scope flow:
 4. Spring Authorization Server issues an access token after user authorization.
 5. An independently running Payroll resource service validates the JWT and
    allows or rejects requests based on issuer, audience, and scopes.
+
+## Visual Demo Narrative
+
+The recommended portfolio story is:
+
+1. **Tenant context** — select Development Tenant and show that directory,
+   access, application, protocol, and audit views share the boundary.
+2. **Effective authorization** — trace a user from direct/group role assignment
+   to de-duplicated effective permissions enforced by the backend.
+3. **Application scope model** — show Payroll permissions separately from
+   system IAM permissions and OIDC identity scopes.
+4. **Authorization journey** — generate a registered OAuth2 request, complete
+   backend-owned login/MFA/consent as configured, and exchange the code.
+5. **Least-privilege proof** — use one token to produce employee `200` and
+   salary `403` from the independent Payroll service.
+6. **Provisioning and evidence** — generate a supported SCIM request, observe
+   the shared directory, and finish in tenant-scoped audit logs.
+
+See the [Portfolio Review Guide](docs/demos/portfolio-review.md) for narration,
+exact setup, optional mutation steps, and truthful production boundaries.
 
 ## Feature Overview
 
@@ -99,7 +152,8 @@ pairwise subject identifiers and advanced claim mapping remain future work.
 ### External Demo Resource Service
 
 - A separate Spring Boot service under `payroll-resource-service/`, listening
-  on port 8090 with no IdentityForge runtime or database dependency.
+  on port 8090 with no shared IdentityForge domain code, database, session, or
+  process-memory dependency; its runtime trust is issuer metadata and JWKS.
 - Independent signature, issuer, expiration, `payroll-api` audience, and
   endpoint-scope validation.
 - A complete local demonstration of `401`, `403`, and successful resource
@@ -136,8 +190,12 @@ pairwise subject identifiers and advanced claim mapping remain future work.
 
 - React TypeScript Admin Console using real backend Admin APIs.
 - OAuth2 Authorization Code + PKCE login.
+- Responsive, task-grouped navigation with persistent tenant context and
+  explicit loading, empty, validation, error/retry, and destructive-action
+  states.
 - Pages for tenants, users, groups, roles, permissions, applications, OAuth2
-  clients, consents, MFA actions, audit logs, and guided demo workflows.
+  clients, consents, MFA actions, audit logs, and guided IAM, OAuth2/OIDC, and
+  SCIM demo workflows.
 
 ### Engineering Practices
 
@@ -254,7 +312,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`, select **Sign in with IdentityForge**, and
+Open `http://localhost:5173`, select **Continue to sign in**, and
 log in with:
 
 ```text
@@ -299,82 +357,42 @@ The `dev` profile creates local-only data for the main portfolio demo:
 | Application / Resource Server | `Payroll API` |
 | Application permissions | `payroll.employee.read`, `payroll.salary.read`, `payroll.salary.write` |
 
-## End-to-End OAuth2 Application Scope Demo
+## Recommended End-to-End Demo
 
-This walkthrough demonstrates that an access token containing
-`payroll.employee.read` can read employee data but cannot read salary data.
+After completing [Quick Start](#quick-start), use this short proof path:
 
-1. Start Docker dependencies:
-
-   ```bash
-   docker compose up -d
-   ```
-
-2. Start the backend with the dev profile:
-
-   ```bash
-   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-   ```
-
-3. Start the external Payroll service in a second terminal:
+1. Select **Development Tenant** on the Dashboard.
+2. Open **Applications** and show the Payroll API permissions.
+3. Open **OAuth2 Clients** and show that **IdentityForge Dev Client** is linked
+   to Payroll API and may request selected application scopes.
+4. Open **OAuth2 & OIDC**, select the development client, set the registered
+   redirect URI to `http://127.0.0.1:8080/oauth2/demo/callback`, and request
+   only `payroll.employee.read` as an application scope.
+5. Complete the real backend authorization flow and run the generated code
+   exchange command locally.
+6. Use the returned token against both Payroll endpoints:
 
    ```bash
-   ./mvnw -f payroll-resource-service/pom.xml spring-boot:run
+   curl -i -H "Authorization: Bearer <ACCESS_TOKEN>" \
+     http://localhost:8090/api/payroll/employees
+
+   curl -i -H "Authorization: Bearer <ACCESS_TOKEN>" \
+     http://localhost:8090/api/payroll/salaries
    ```
 
-4. Start the frontend in a third terminal:
+Expected result: employees returns `200`; salaries returns `403` because
+`payroll.employee.read` does not imply `payroll.salary.read`.
 
-   ```bash
-   cd frontend
-   npm run dev
-   ```
+The bootstrap development client does **not** require consent by default. Enable
+**Require consent** or create a consent-required Web App client when the consent
+screen is part of the demonstration. Never place the access token,
+authorization code, client secret, or browser storage in screenshots.
 
-5. Open `http://localhost:5173` and log in as
-   `development/admin` / `admin123456`.
-6. Open **Applications** and verify that **Payroll API** exists.
-7. Open **OAuth2 Clients** and verify that **IdentityForge Dev Client** is
-   linked to **Payroll API**.
-8. Open **OAuth2 Demo**.
-9. Select **IdentityForge Dev Client**.
-10. Select OIDC scopes such as `openid profile email groups roles`, then select
-   `payroll.employee.read` separately.
-11. Generate the authorization URL.
-12. Open the authorization URL.
-13. Log in and approve consent if required.
-14. Copy the returned authorization code.
-15. Exchange the code for an access token using the generated token command.
-16. Inspect the returned ID Token and call UserInfo:
-
-    ```bash
-    curl -H "Authorization: Bearer <ACCESS_TOKEN>" \
-      http://localhost:8080/userinfo
-    ```
-
-17. Call the external employee endpoint:
-
-    ```bash
-    curl -i \
-      -H "Authorization: Bearer <ACCESS_TOKEN>" \
-      http://localhost:8090/api/payroll/employees
-    ```
-
-    Expected result: HTTP `200`.
-
-18. Call the salary endpoint with the same token:
-
-    ```bash
-    curl -i \
-      -H "Authorization: Bearer <ACCESS_TOKEN>" \
-      http://localhost:8090/api/payroll/salaries
-    ```
-
-    Expected result: HTTP `403` because `payroll.salary.read` was not
-    requested.
-
-The Payroll service contains intentionally static data, but JWT validation and
-endpoint authorization happen across a separate process boundary. A shorter
-client-credentials version is in the
-[external Payroll demo guide](docs/demos/external-payroll-resource-service.md).
+The complete narrated path—including effective RBAC, MFA, SCIM, audit evidence,
+and optional mutations—is in the
+[Portfolio Review Guide](docs/demos/portfolio-review.md). A shorter
+client-credentials resource-service proof is in the
+[Payroll demo guide](docs/demos/external-payroll-resource-service.md).
 
 ## Admin Console Workflows
 
@@ -458,7 +476,9 @@ After startup:
 This project is a portfolio-grade prototype, not a production-ready IAM
 platform.
 
-- Authorization and token storage is not fully distributed production storage.
+- Authorization grants and consents are JDBC-backed, while browser sessions
+  and some immediate security controls remain node-local; there is no
+  distributed session, denylist, or event-propagation layer.
 - The external Payroll service contains static demo data, has no persistence,
   and is not a real payroll system.
 - MFA throttling is process-local, and enrollment/recovery-code regeneration
@@ -468,8 +488,8 @@ platform.
 - Pairwise OIDC subject identifiers and advanced claim transformation remain
   future work.
 - SCIM is a documented supported subset rather than full protocol conformance;
-  bulk, nested groups, extensions, attribute projection, and the complete
-  filter grammar remain out of scope.
+  schemas/resource types, bulk, sorting, nested groups, extensions, attribute
+  projection, POST search, and the complete filter grammar remain out of scope.
 - The frontend is a portfolio-polished demonstration console, not a production
   operations UI with full localization, accessibility certification, or
   large-directory virtualization.

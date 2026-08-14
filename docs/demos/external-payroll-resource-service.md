@@ -9,6 +9,10 @@ signing keys.
 This is intentionally static demo data. The slice demonstrates token issuance
 and enforcement across a real service boundary, not a payroll product.
 
+For the reviewer-oriented narrative that connects this service to tenant IAM,
+OIDC, MFA, SCIM, and audit evidence, use the
+[Portfolio Review Guide](portfolio-review.md).
+
 ## Architecture
 
 ```mermaid
