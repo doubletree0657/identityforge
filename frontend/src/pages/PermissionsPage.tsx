@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '../api/adminApi';
 import { Badge } from '../components/Badge';
 import { Card } from '../components/Card';
-import { ErrorState, LoadingState } from '../components/State';
+import { EmptyState, ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { useTenantContext } from '../context/TenantContext';
 import { PermissionResponse } from '../types/api';
@@ -31,9 +31,10 @@ export function PermissionsPage() {
         </Card>
       )}
       {permissions.isLoading && <LoadingState />}
-      {permissions.isError && <ErrorState error={permissions.error} />}
+      {permissions.isError && <ErrorState error={permissions.error} onRetry={() => void permissions.refetch()} />}
       {permissions.data && (
         <div className="grid gap-4">
+          {permissions.data.items.length === 0 && <EmptyState title="No permissions in the catalog" detail="System IAM permissions are normally seeded during bootstrap." />}
           {Object.entries(categories).map(([category, items]) => (
             <Card key={category} title={category}>
               <DataTable

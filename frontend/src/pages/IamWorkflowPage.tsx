@@ -16,6 +16,9 @@ const steps = [
   { label: 'Add user to group', path: '/groups', detail: 'Use the tenant user selector in the group membership workflow.' },
   { label: 'Create OAuth2 client', path: '/clients', detail: 'Choose confidential or public and follow the guided defaults.' },
   { label: 'Rotate client secret', path: '/clients', detail: 'Rotate only confidential client secrets and copy the one-time value from the console.' },
+  { label: 'Enroll MFA', path: '/mfa', detail: 'Complete authenticator verification and save the one-time recovery-code set.' },
+  { label: 'Run OAuth2 / OIDC flow', path: '/oauth2-demo', detail: 'Validate the client request, complete login and consent, then verify scoped resource access.' },
+  { label: 'Provision through SCIM', path: '/scim-demo', detail: 'Generate a supported SCIM request and verify the same directory and audit records.' },
   { label: 'Review audit logs', path: '/audit-logs', detail: 'Filter by tenant, action, resource type, or resource id.' },
 ];
 
@@ -24,7 +27,7 @@ export function IamWorkflowPage() {
 
   return (
     <>
-      <PageHeader title="IAM Workflow" description="A guided chain showing how tenant-scoped IAM resources relate to each other." />
+      <PageHeader title="IAM Lifecycle Workflow" description="A guided vertical slice from tenant and identity creation through effective authorization, protocol access, MFA, provisioning, and audit evidence." />
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
         <Card title="Current tenant">
           {selectedTenant ? (

@@ -391,7 +391,9 @@ UUID copy/paste:
   client scopes.
 - Manage personal TOTP setup and recovery codes, review or disable user MFA,
   manage OAuth2 consents, and review audit logs.
-- Use **IAM Workflow** and **OAuth2 Demo** as guided portfolio demonstrations.
+- Use **IAM Workflow**, **OAuth2 & OIDC**, and **SCIM Provisioning** as guided
+  portfolio demonstrations with validation, generated commands, and links to
+  directory and audit evidence.
 
 ## What This Project Demonstrates
 
@@ -468,7 +470,9 @@ platform.
 - SCIM is a documented supported subset rather than full protocol conformance;
   bulk, nested groups, extensions, attribute projection, and the complete
   filter grammar remain out of scope.
-- The frontend is functional but is not a fully polished enterprise console.
+- The frontend is a portfolio-polished demonstration console, not a production
+  operations UI with full localization, accessibility certification, or
+  large-directory virtualization.
 - Managed key rotation, distributed session/token infrastructure, rate limiting,
   observability, high availability, and operational hardening remain future
   work.
@@ -487,7 +491,7 @@ Run the external resource-service signed-JWT integration tests:
 ./mvnw -f payroll-resource-service/pom.xml test
 ```
 
-Run the QR encoder tests and build the frontend:
+Run the frontend component/demo-flow tests, QR encoder tests, and production build:
 
 ```bash
 cd frontend

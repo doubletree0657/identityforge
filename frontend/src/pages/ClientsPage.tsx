@@ -4,11 +4,14 @@ import { adminApi } from '../api/adminApi';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Field, Input, Select, Textarea } from '../components/Form';
 import { Pagination } from '../components/Pagination';
+import { Notice } from '../components/Notice';
 import { SecretNotice } from '../components/SecretNotice';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
+import { TenantRequired } from '../components/TenantRequired';
 import { useAuth } from '../context/AuthContext';
 import { useTenantContext } from '../context/TenantContext';
 import { ClientResponse, ClientStatus, ClientType, ResourcePermissionResponse } from '../types/api';
@@ -21,6 +24,7 @@ export function ClientsPage() {
   const [template, setTemplate] = useState('web-app');
   const [clientType, setClientType] = useState<ClientType>('CONFIDENTIAL');
   const [grantType, setGrantType] = useState('authorization_code');
+  const [rotationTarget, setRotationTarget] = useState<ClientResponse | null>(null);
   const { hasPermission } = useAuth();
   const { selectedTenantId, selectedTenant } = useTenantContext();
   const queryClient = useQueryClient();
@@ -48,6 +52,7 @@ export function ClientsPage() {
   });
   const createClient = useMutation({
     mutationFn: adminApi.clients.create,
+    onMutate: () => setOneTimeSecret(''),
     onSuccess: (result) => {
       setOneTimeSecret(result.clientSecret ?? '');
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -59,7 +64,10 @@ export function ClientsPage() {
   });
   const rotateSecret = useMutation({
     mutationFn: adminApi.clients.rotateSecret,
-    onSuccess: (result) => setOneTimeSecret(result.clientSecret ?? ''),
+    onSuccess: (result) => {
+      setOneTimeSecret(result.clientSecret ?? '');
+      setRotationTarget(null);
+    },
   });
   const assignResourcePermission = useMutation({
     mutationFn: ({ clientId, permissionId }: { clientId: string; permissionId: string }) =>
@@ -141,6 +149,7 @@ export function ClientsPage() {
   return (
     <>
       <PageHeader title="OAuth2 Clients" description="Manage persisted OAuth2 client registrations. Raw secrets are only displayed on create or rotation." />
+      {!selectedTenantId && <div className="mb-4"><TenantRequired label="OAuth2 clients belong to a tenant. Select one before creating or reviewing registrations." /></div>}
       <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
         <Card title="Create client">
           {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant in the header before creating OAuth2 clients.</p>}
@@ -159,15 +168,15 @@ export function ClientsPage() {
                 {Object.entries(templates).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
               </Select>
             </Field>
-            <Field label="Client ID"><Input name="clientId" required /></Field>
-            <Field label="Client name"><Input name="name" required /></Field>
+            <Field label="Client ID" required hint="Globally unique identifier sent on OAuth2 requests."><Input name="clientId" required maxLength={120} /></Field>
+            <Field label="Client name" required><Input name="name" required maxLength={160} /></Field>
             <Field label="Client type" hint="Confidential clients can hold a backend secret. Public clients cannot keep a secret and use PKCE with authentication method none.">
               <Select name="clientType" value={clientType} onChange={(event) => setClientType(event.target.value as ClientType)}>
                 <option value="CONFIDENTIAL">CONFIDENTIAL</option>
                 <option value="PUBLIC">PUBLIC</option>
               </Select>
             </Field>
-            <label className="flex items-center gap-2 text-sm"><input key={`${template}-pkce`} name="requirePkce" type="checkbox" defaultChecked={selectedTemplate.requirePkce || clientType === 'PUBLIC'} disabled={clientType === 'PUBLIC'} /> Require PKCE</label>
+            <label className="flex items-center gap-2 text-sm"><input key={`${template}-${clientType}-pkce`} name="requirePkce" type="checkbox" defaultChecked={selectedTemplate.requirePkce || clientType === 'PUBLIC'} disabled={clientType === 'PUBLIC'} /> Require PKCE</label>
             <label className="flex items-center gap-2 text-sm"><input key={`${template}-consent`} name="requireConsent" type="checkbox" defaultChecked={selectedTemplate.requireConsent} /> Require consent</label>
             <Field label="Grant type" hint="authorization_code is for browser sign-in. client_credentials is for service-to-service access.">
               <Select name="grantType" value={grantType} onChange={(event) => setGrantType(event.target.value)}>
@@ -202,19 +211,23 @@ export function ClientsPage() {
             <Field label="Authentication method" hint="Set automatically from client type: confidential uses client_secret_basic; public uses none.">
               <Input value={clientType === 'PUBLIC' ? 'none' : 'client_secret_basic'} disabled />
             </Field>
-            <Button type="submit" disabled={createClient.isPending || !selectedTenantId || !hasPermission('iam.clients.write')}>Create</Button>
+            <Button type="submit" isLoading={createClient.isPending} loadingLabel="Registering client…" disabled={!selectedTenantId || !hasPermission('iam.clients.write')}>Register client</Button>
             {createClient.isError && <ErrorState error={createClient.error} />}
             {oneTimeSecret && <SecretNotice title="One-time client secret" secret={oneTimeSecret} />}
+            {createClient.isSuccess && !oneTimeSecret && <Notice title="Public client registered" tone="success">No secret was issued. This client must use PKCE and authentication method <code>none</code>.</Notice>}
           </form>
         </Card>
         <Card title="Clients">
           {!selectedTenantId && <p className="text-sm text-slate-600">Select a tenant to load OAuth2 clients.</p>}
           {clients.isLoading && <LoadingState />}
-          {clients.isError && <ErrorState error={clients.error} />}
+          {clients.isError && <ErrorState error={clients.error} onRetry={() => void clients.refetch()} />}
           {clients.data && (
             <>
               <DataTable
                 items={clients.data.items}
+                getKey={(client) => client.id}
+                emptyTitle="No OAuth2 clients in this tenant"
+                emptyDetail="Register a client from a guided template to demonstrate login, consent, tokens, and scope enforcement."
                 columns={[
                   { header: 'Client', render: (client) => <span className="font-medium">{client.name}</span> },
                   { header: 'Client ID', render: (client) => client.clientId },
@@ -314,7 +327,7 @@ export function ClientsPage() {
                         <label className="flex items-center gap-2 text-xs"><input name="requireConsent" type="checkbox" defaultChecked={client.requireConsent} /> Require consent</label>
                         <div className="flex gap-2">
                           <Button type="submit" variant="secondary" disabled={!hasPermission('iam.clients.write')}>Save</Button>
-                          <Button type="button" variant="danger" onClick={() => rotateSecret.mutate(client.id)} disabled={client.clientType === 'PUBLIC' || !hasPermission('iam.clients.write')}>Rotate secret</Button>
+                          <Button type="button" variant="danger" onClick={() => setRotationTarget(client)} disabled={client.clientType === 'PUBLIC' || !hasPermission('iam.clients.write')}>Rotate secret</Button>
                         </div>
                       </form>
                     ),
@@ -334,6 +347,15 @@ export function ClientsPage() {
           </p>
         </Card>
       </div>
+      <ConfirmDialog
+        open={rotationTarget !== null}
+        title={`Rotate secret for ${rotationTarget?.name ?? 'client'}?`}
+        detail="The current client secret stops working immediately. The replacement is displayed once, so update the relying application before leaving this page."
+        confirmLabel="Rotate secret"
+        isPending={rotateSecret.isPending}
+        onCancel={() => setRotationTarget(null)}
+        onConfirm={() => rotationTarget && rotateSecret.mutate(rotationTarget.id)}
+      />
     </>
   );
 }

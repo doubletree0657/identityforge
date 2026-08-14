@@ -6,6 +6,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field, Input, Select, Textarea } from '../components/Form';
 import { Pagination } from '../components/Pagination';
+import { Notice } from '../components/Notice';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { TenantRequired } from '../components/TenantRequired';
@@ -92,13 +93,13 @@ export function ApplicationsPage() {
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
     createResourceServer.mutate({
       tenantId: selectedTenantId,
       identifier: String(form.get('identifier') ?? ''),
       name: String(form.get('name') ?? ''),
       description: String(form.get('description') ?? ''),
-    });
-    event.currentTarget.reset();
+    }, { onSuccess: () => formElement.reset() });
   }
 
   function createApplicationPermission(event: FormEvent<HTMLFormElement>) {
@@ -107,6 +108,7 @@ export function ApplicationsPage() {
       return;
     }
     const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
     createPermission.mutate({
       id: selectedResourceServer.id,
       body: {
@@ -114,8 +116,7 @@ export function ApplicationsPage() {
         displayName: String(form.get('displayName') ?? ''),
         description: String(form.get('description') ?? ''),
       },
-    });
-    event.currentTarget.reset();
+    }, { onSuccess: () => formElement.reset() });
   }
 
   if (!selectedTenantId) {
@@ -141,13 +142,14 @@ export function ApplicationsPage() {
           <Card title="Create application">
             <form onSubmit={create} className="grid gap-3">
               <Field label="Tenant"><Input value={selectedTenant?.name ?? 'Selected tenant'} disabled /></Field>
-              <Field label="Identifier" hint="Unique within the selected tenant.">
-                <Input name="identifier" placeholder="payroll-api" required disabled={!canWrite} />
+              <Field label="Identifier" hint="Stable and unique within the selected tenant." required>
+                <Input name="identifier" placeholder="payroll-api" required maxLength={255} disabled={!canWrite} />
               </Field>
-              <Field label="Name"><Input name="name" placeholder="Payroll API" required disabled={!canWrite} /></Field>
-              <Field label="Description"><Textarea name="description" placeholder="Payroll application capabilities" disabled={!canWrite} /></Field>
-              <Button type="submit" disabled={createResourceServer.isPending || !canWrite}>Create</Button>
+              <Field label="Name" required><Input name="name" placeholder="Payroll API" required maxLength={255} disabled={!canWrite} /></Field>
+              <Field label="Description"><Textarea name="description" placeholder="Payroll application capabilities" maxLength={2000} disabled={!canWrite} /></Field>
+              <Button type="submit" isLoading={createResourceServer.isPending} loadingLabel="Creating application…" disabled={!canWrite}>Create application</Button>
               {createResourceServer.isError && <ErrorState error={createResourceServer.error} />}
+              {createResourceServer.isSuccess && <Notice title="Application created" tone="success">Define application permissions, then link an OAuth2 client.</Notice>}
             </form>
           </Card>
           <Card title="Permission model">
@@ -161,11 +163,12 @@ export function ApplicationsPage() {
           <Card title="Applications">
             {!canRead && <ErrorState error={{ code: 'access_denied', message: 'Missing iam.resource-servers.read.' }} />}
             {resourceServers.isLoading && <LoadingState />}
-            {resourceServers.isError && <ErrorState error={resourceServers.error} />}
+            {resourceServers.isError && <ErrorState error={resourceServers.error} onRetry={() => void resourceServers.refetch()} />}
             {resourceServers.data && (
               <>
                 <DataTable
                   items={resourceServers.data.items}
+                  getKey={(resourceServer) => resourceServer.id}
                   columns={[
                     {
                       header: 'Application',
@@ -196,6 +199,7 @@ export function ApplicationsPage() {
                     },
                   ]}
                   emptyTitle="No applications found"
+                  emptyDetail="Create an application to model a resource server and its requestable OAuth2 scopes."
                 />
                 <Pagination page={resourceServers.data} onPageChange={setPage} />
               </>
@@ -219,14 +223,15 @@ export function ApplicationsPage() {
                     <Input name="description" placeholder="Read employee records" disabled={!canWrite} />
                   </Field>
                   <div className="flex items-end">
-                    <Button type="submit" disabled={createPermission.isPending || !canWrite}>Create permission</Button>
+                    <Button type="submit" isLoading={createPermission.isPending} loadingLabel="Creating permission…" disabled={!canWrite}>Create permission</Button>
                   </div>
                 </form>
                 {permissions.isLoading && <LoadingState />}
-                {permissions.isError && <ErrorState error={permissions.error} />}
+                {permissions.isError && <ErrorState error={permissions.error} onRetry={() => void permissions.refetch()} />}
                 {permissions.data && (
                   <DataTable
                     items={permissions.data}
+                    getKey={(permission) => permission.id}
                     columns={[
                       { header: 'Permission', render: (permission) => <span className="font-medium">{permission.name}</span> },
                       { header: 'Display name', render: (permission) => permission.displayName || '-' },
@@ -259,6 +264,7 @@ export function ApplicationsPage() {
                       },
                     ]}
                     emptyTitle="No application permissions found"
+                    emptyDetail="Permissions created here can be explicitly allowed as scopes on a linked OAuth2 client."
                   />
                 )}
                 {(createPermission.isError || updatePermission.isError) && (
@@ -273,7 +279,7 @@ export function ApplicationsPage() {
               <ErrorState error={{ code: 'access_denied', message: 'Missing iam.clients.read.' }} />
             )}
             {selectedResourceServer && clients.isLoading && <LoadingState />}
-            {selectedResourceServer && clients.isError && <ErrorState error={clients.error} />}
+            {selectedResourceServer && clients.isError && <ErrorState error={clients.error} onRetry={() => void clients.refetch()} />}
             {selectedResourceServer && clients.data && (
               <DataTable
                 items={linkedClients}

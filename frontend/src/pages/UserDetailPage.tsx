@@ -1,4 +1,4 @@
-import { FormEvent } from 'react';
+import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { Save, Trash2 } from 'lucide-react';
@@ -6,7 +6,9 @@ import { adminApi } from '../api/adminApi';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Field, Input, Select } from '../components/Form';
+import { Notice } from '../components/Notice';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { useAuth } from '../context/AuthContext';
@@ -16,6 +18,7 @@ import { PageHeader } from './PageHeader';
 
 export function UserDetailPage() {
   const { userId = '' } = useParams();
+  const [confirmMfaDisable, setConfirmMfaDisable] = useState(false);
   const queryClient = useQueryClient();
   const { user: currentUser, hasPermission } = useAuth();
 
@@ -86,7 +89,10 @@ export function UserDetailPage() {
   });
   const disableTotp = useMutation({
     mutationFn: () => adminApi.mfa.disableTotp(userId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mfa-status', userId] }),
+    onSuccess: () => {
+      setConfirmMfaDisable(false);
+      queryClient.invalidateQueries({ queryKey: ['mfa-status', userId] });
+    },
   });
 
   function onUpdateUser(event: FormEvent<HTMLFormElement>) {
@@ -103,11 +109,11 @@ export function UserDetailPage() {
   function onPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
     setPassword.mutate({
       newPassword: String(form.get('newPassword') ?? ''),
       passwordResetRequired: form.get('passwordResetRequired') === 'on',
-    });
-    event.currentTarget.reset();
+    }, { onSuccess: () => formElement.reset() });
   }
 
   function onProfile(event: FormEvent<HTMLFormElement>) {
@@ -130,12 +136,12 @@ export function UserDetailPage() {
   function onAttribute(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
     setAttribute.mutate({
       name: String(form.get('name') ?? ''),
       value: String(form.get('value') ?? ''),
       valueType: String(form.get('valueType') ?? 'STRING') as UserAttributeValueType,
-    });
-    event.currentTarget.reset();
+    }, { onSuccess: () => formElement.reset() });
   }
 
   if (user.isLoading) {
@@ -157,22 +163,22 @@ export function UserDetailPage() {
     <>
       <PageHeader
         title={user.data.displayName}
-        description="Users belong to one tenant, may belong to multiple optional groups, and can receive roles directly."
+        description={`${user.data.username} · Users belong to one tenant, may join multiple groups, and can receive roles directly or through group inheritance.`}
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'ACTIVE' })}>Activate</Button>
-            <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'DISABLED' })}>Disable</Button>
-            <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'LOCKED' })}>Lock</Button>
-            <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'ACTIVE' })}>Unlock</Button>
+            <Button variant="ghost" onClick={() => window.history.back()}>← Back</Button>
+            {user.data.accountStatus !== 'ACTIVE' && <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'ACTIVE' })}>Activate / unlock</Button>}
+            {user.data.accountStatus !== 'DISABLED' && <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'DISABLED' })}>Disable</Button>}
+            {user.data.accountStatus !== 'LOCKED' && <Button variant="secondary" onClick={() => updateUser.mutate({ accountStatus: 'LOCKED' })}>Lock</Button>}
           </div>
         }
       />
       <div className="grid gap-4 xl:grid-cols-2">
         <Card title="Identity">
           <form onSubmit={onUpdateUser} className="grid gap-3 md:grid-cols-2">
-            <Field label="Display name"><Input name="displayName" defaultValue={user.data.displayName} /></Field>
-            <Field label="Email"><Input name="email" defaultValue={user.data.email ?? ''} /></Field>
-            <Field label="Phone number"><Input name="phoneNumber" defaultValue={user.data.phoneNumber ?? ''} /></Field>
+            <Field label="Display name" required><Input name="displayName" defaultValue={user.data.displayName} required maxLength={160} /></Field>
+            <Field label="Email"><Input name="email" type="email" defaultValue={user.data.email ?? ''} maxLength={254} /></Field>
+            <Field label="Phone number"><Input name="phoneNumber" type="tel" defaultValue={user.data.phoneNumber ?? ''} maxLength={40} /></Field>
             <Field label="Status">
               <Select name="accountStatus" defaultValue={user.data.accountStatus}>
                 <option value="ACTIVE">ACTIVE</option>
@@ -186,26 +192,28 @@ export function UserDetailPage() {
             </p>
             <div className="md:col-span-2"><Button type="submit" icon={<Save className="h-4 w-4" />}>Save identity</Button></div>
             {updateUser.isError && <div className="md:col-span-2"><ErrorState error={updateUser.error} /></div>}
+            {updateUser.isSuccess && <div className="md:col-span-2"><Notice title="Identity updated" tone="success" /></div>}
           </form>
         </Card>
         <Card title="Password">
           <form onSubmit={onPassword} className="grid gap-3">
-            <Field label="New password"><Input name="newPassword" type="password" autoComplete="new-password" required /></Field>
+            <Field label="New password" required hint="Minimum 8 characters. The value is sent only to the credential endpoint."><Input name="newPassword" type="password" autoComplete="new-password" minLength={8} required /></Field>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input name="passwordResetRequired" type="checkbox" className="h-4 w-4" />
               Require password reset
             </label>
-            <Button type="submit">Set password</Button>
+            <Button type="submit" isLoading={setPassword.isPending} loadingLabel="Updating credential…">Set password</Button>
             {setPassword.isError && <ErrorState error={setPassword.error} />}
+            {setPassword.isSuccess && <Notice title="Password updated" tone="success">Existing access tokens were invalidated by the security-state change.</Notice>}
           </form>
         </Card>
         <Card title="Profile">
           {profile.isLoading && <LoadingState label="Loading profile" />}
-          {profile.isError && <ErrorState error={profile.error} />}
+          {profile.isError && <ErrorState error={profile.error} onRetry={() => void profile.refetch()} />}
           {profile.data && (
             <form onSubmit={onProfile} className="grid gap-3 md:grid-cols-2">
-              {['givenName', 'familyName', 'preferredName', 'locale', 'timezone', 'avatarUrl', 'jobTitle', 'department', 'organization', 'employeeNumber'].map((field) => (
-                <Field key={field} label={field}>
+              {Object.entries(profileFields).map(([field, label]) => (
+                <Field key={field} label={label}>
                   <Input name={field} defaultValue={(profile.data as unknown as Record<string, string | undefined>)[field] ?? ''} />
                 </Field>
               ))}
@@ -215,6 +223,8 @@ export function UserDetailPage() {
           )}
         </Card>
         <Card title="Direct roles">
+          {roles.isLoading && <LoadingState label="Loading tenant roles" />}
+          {roles.isError && <ErrorState error={roles.error} onRetry={() => void roles.refetch()} />}
           <div className="mb-3 flex flex-wrap gap-2">
             {assignedRoles.length === 0 && user.data.roleIds.length === 0 && <span className="text-sm text-slate-500">No roles assigned.</span>}
             {assignedRoles.map((role) => (
@@ -235,7 +245,7 @@ export function UserDetailPage() {
             }}
             className="flex gap-2"
           >
-            <Select name="roleId" className="flex-1">
+            <Select name="roleId" className="flex-1" required>
               <option value="">Select role</option>
               {availableRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
             </Select>
@@ -254,12 +264,15 @@ export function UserDetailPage() {
         </Card>
         <Card title="Group memberships">
           {groups.isLoading && <LoadingState label="Loading groups" />}
-          {groups.isError && <ErrorState error={groups.error} />}
+          {groups.isError && <ErrorState error={groups.error} onRetry={() => void groups.refetch()} />}
           <p className="mb-3 text-sm text-slate-600">Groups are optional organizational containers. This user can belong to multiple groups or none.</p>
           {!groups.isLoading && memberships.length === 0 && <p className="text-sm text-slate-500">This user is not a member of any groups in this tenant.</p>}
           {memberships.length > 0 && (
             <DataTable
               items={memberships}
+              getKey={(group) => group.id}
+              emptyTitle="No group memberships"
+              emptyDetail="Group membership is optional; direct roles remain independent."
               columns={[
                 { header: 'Group', render: (group) => <span className="font-medium">{group.displayName || group.name}</span> },
                 { header: 'Description', render: (group) => group.description || '-' },
@@ -274,7 +287,7 @@ export function UserDetailPage() {
             }}
             className="mt-4 flex gap-2"
           >
-            <Select name="groupId" className="flex-1">
+            <Select name="groupId" className="flex-1" required>
               <option value="">Select group</option>
               {availableGroups.map((group) => <option key={group.id} value={group.id}>{group.displayName || group.name}</option>)}
             </Select>
@@ -296,9 +309,13 @@ export function UserDetailPage() {
           </form>
           {setAttribute.isError && <div className="mb-3"><ErrorState error={setAttribute.error} /></div>}
           {attributes.isLoading && <LoadingState label="Loading attributes" />}
+          {attributes.isError && <ErrorState error={attributes.error} onRetry={() => void attributes.refetch()} />}
           {attributes.data && (
             <DataTable
               items={attributes.data}
+              getKey={(attribute) => attribute.id}
+              emptyTitle="No custom attributes"
+              emptyDetail="Add a typed attribute only when the core profile does not model the value."
               columns={[
                 { header: 'Name', render: (attribute) => attribute.name },
                 { header: 'Value', render: (attribute) => attribute.value },
@@ -326,7 +343,7 @@ export function UserDetailPage() {
                   <Button
                     variant="danger"
                     disabled={!mfaStatus.data.totpEnrolled || disableTotp.isPending}
-                    onClick={() => window.confirm('Disable this user’s MFA and revoke all recovery codes?') && disableTotp.mutate()}
+                    onClick={() => setConfirmMfaDisable(true)}
                   >Disable MFA</Button>
                 )}
               </>
@@ -339,10 +356,13 @@ export function UserDetailPage() {
           action={<Link className="text-sm font-medium text-brand hover:underline" to={`/audit-logs?resourceType=USER&resourceId=${user.data.id}`}>Open audit logs</Link>}
         >
           {auditLogs.isLoading && <LoadingState label="Loading audit events" />}
-          {auditLogs.isError && <ErrorState error={auditLogs.error} />}
+          {auditLogs.isError && <ErrorState error={auditLogs.error} onRetry={() => void auditLogs.refetch()} />}
           {auditLogs.data && (
             <DataTable
               items={auditLogs.data.items}
+              getKey={(log) => log.id}
+              emptyTitle="No related audit events"
+              emptyDetail="User-specific administration and security events will appear here."
               columns={[
                 { header: 'When', render: (log) => formatDate(log.createdAt) },
                 { header: 'Action', render: (log) => <span className="font-medium">{log.action}</span> },
@@ -352,9 +372,31 @@ export function UserDetailPage() {
           )}
         </Card>
       </div>
+      <ConfirmDialog
+        open={confirmMfaDisable}
+        title={`Disable MFA for ${user.data.displayName}?`}
+        detail="The authenticator credential and every recovery code will be revoked. Existing user access tokens will also be invalidated. Credential material remains hidden from administrators."
+        confirmLabel="Disable user MFA"
+        isPending={disableTotp.isPending}
+        onCancel={() => setConfirmMfaDisable(false)}
+        onConfirm={() => disableTotp.mutate()}
+      />
     </>
   );
 }
+
+const profileFields: Record<string, string> = {
+  givenName: 'Given name',
+  familyName: 'Family name',
+  preferredName: 'Preferred name',
+  locale: 'Locale',
+  timezone: 'Time zone',
+  avatarUrl: 'Avatar URL',
+  jobTitle: 'Job title',
+  department: 'Department',
+  organization: 'Organization',
+  employeeNumber: 'Employee number',
+};
 
 function AuthList({ title, values }: { title: string; values: string[] }) {
   return (

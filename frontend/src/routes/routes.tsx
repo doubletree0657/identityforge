@@ -17,6 +17,7 @@ import { OAuth2ConsentsPage } from '../pages/OAuth2ConsentsPage';
 import { OAuth2DemoPage } from '../pages/OAuth2DemoPage';
 import { PermissionsPage } from '../pages/PermissionsPage';
 import { RolesPage } from '../pages/RolesPage';
+import { ScimDemoPage } from '../pages/ScimDemoPage';
 import { TenantsPage } from '../pages/TenantsPage';
 import { UserDetailPage } from '../pages/UserDetailPage';
 import { UsersPage } from '../pages/UsersPage';
@@ -43,6 +44,7 @@ export const routes: RouteObject[] = [
       { path: '/audit-logs', element: <AuditLogsPage /> },
       { path: '/iam-workflow', element: <IamWorkflowPage /> },
       { path: '/oauth2-demo', element: <OAuth2DemoPage /> },
+      { path: '/scim-demo', element: <ScimDemoPage /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },

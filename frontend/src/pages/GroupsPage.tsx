@@ -6,6 +6,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field, Input } from '../components/Form';
 import { Pagination } from '../components/Pagination';
+import { Notice } from '../components/Notice';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { TenantRequired } from '../components/TenantRequired';
@@ -37,13 +38,13 @@ export function GroupsPage() {
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
     createGroup.mutate({
       tenantId: selectedTenantId,
       name: String(form.get('name') ?? ''),
       displayName: String(form.get('displayName') ?? ''),
       description: String(form.get('description') ?? ''),
-    });
-    event.currentTarget.reset();
+    }, { onSuccess: () => formElement.reset() });
   }
 
   return (
@@ -55,21 +56,25 @@ export function GroupsPage() {
           {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant in the header before creating groups.</p>}
           <form onSubmit={create} className="grid gap-3">
             <Field label="Tenant"><Input value={selectedTenant?.name ?? 'No tenant selected'} disabled /></Field>
-            <Field label="Name"><Input name="name" required /></Field>
-            <Field label="Display name"><Input name="displayName" /></Field>
-            <Field label="Description"><Input name="description" /></Field>
-            <Button type="submit" disabled={!selectedTenantId}>Create</Button>
+            <Field label="Name" required hint="Stable tenant-local group name."><Input name="name" required maxLength={160} /></Field>
+            <Field label="Display name"><Input name="displayName" maxLength={160} /></Field>
+            <Field label="Description"><Input name="description" maxLength={500} /></Field>
+            <Button type="submit" isLoading={createGroup.isPending} loadingLabel="Creating group…" disabled={!selectedTenantId}>Create group</Button>
             {createGroup.isError && <ErrorState error={createGroup.error} />}
+            {createGroup.isSuccess && <Notice title="Group created" tone="success">Open the group to add members and assign inherited roles.</Notice>}
           </form>
         </Card>
         <Card title="Groups">
           {!selectedTenantId && <p className="text-sm text-slate-600">Select a tenant to load groups and tenant users for membership changes.</p>}
           {groups.isLoading && <LoadingState />}
-          {groups.isError && <ErrorState error={groups.error} />}
+          {groups.isError && <ErrorState error={groups.error} onRetry={() => void groups.refetch()} />}
           {groups.data && (
             <>
               <DataTable
                 items={groups.data.items}
+                getKey={(group) => group.id}
+                emptyTitle="No groups in this tenant"
+                emptyDetail="Groups are optional. Create one to demonstrate direct membership and group-derived authorization."
                 columns={[
                   { header: 'Group', render: (group) => <Link className="font-medium text-brand hover:underline" to={`/groups/${group.id}`}>{group.displayName || group.name}</Link> },
                   { header: 'Name', render: (group) => group.name },

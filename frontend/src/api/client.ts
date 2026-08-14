@@ -59,5 +59,14 @@ function normalizeAxiosError(error: AxiosError<ErrorResponse>): ApiError {
   if (status === 403) {
     return new ApiError('This account is authenticated but is not authorized for this Admin API action.', 'forbidden', status);
   }
+  if (!error.response) {
+    return new ApiError('IdentityForge could not be reached. Check that the backend is running and the configured API URL is correct.', 'network_unavailable');
+  }
+  if (status === 409) {
+    return new ApiError(body?.message || 'This change conflicts with an existing resource or a newer update.', body?.error || 'conflict', status);
+  }
+  if (status && status >= 500) {
+    return new ApiError('The server could not complete this request. Retry once; if it persists, review the backend logs using the request time.', body?.error || 'server_error', status);
+  }
   return new ApiError(error.message || 'API request failed', 'api_error', status);
 }

@@ -11,13 +11,19 @@ export function DataTable<T>({
   items,
   columns,
   emptyTitle = 'No records found',
+  emptyDetail,
+  emptyAction,
+  getKey,
 }: {
   items: T[];
   columns: Column<T>[];
   emptyTitle?: string;
+  emptyDetail?: string;
+  emptyAction?: ReactNode;
+  getKey?: (item: T) => string;
 }) {
   if (items.length === 0) {
-    return <EmptyState title={emptyTitle} />;
+    return <EmptyState title={emptyTitle} detail={emptyDetail} action={emptyAction} />;
   }
   return (
     <div className="overflow-x-auto">
@@ -33,7 +39,7 @@ export function DataTable<T>({
         </thead>
         <tbody className="divide-y divide-line">
           {items.map((item, index) => (
-            <tr key={index} className="bg-white">
+            <tr key={getKey?.(item) ?? index} className="bg-white transition hover:bg-slate-50/70">
               {columns.map((column) => (
                 <td key={column.header} className={`px-4 py-3 align-top ${column.className ?? ''}`}>
                   {column.render(item)}

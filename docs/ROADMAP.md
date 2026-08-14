@@ -178,6 +178,22 @@ more depth.
 - Maven Wrapper, backend and frontend CI build verification, module tests, and
   Testcontainers integration.
 
+### Frontend UX Polish
+
+- Responsive, task-grouped Admin Console navigation with persistent tenant
+  context, clearer page hierarchy, accessible focus behavior, and consistent
+  enterprise presentation.
+- Shared loading, empty, error/retry, validation, success, one-time secret, and
+  destructive-confirmation patterns across directory and application flows.
+- Guided IAM, OAuth2/OIDC, MFA, and SCIM demonstrations with workflow progress,
+  exact client configuration validation, PKCE-aware commands, protocol-safe
+  request generation, and links back to directory and audit evidence.
+- Refined backend-owned login, MFA challenge, consent, logout, and frontend
+  authorization callback presentation without changing authentication trust
+  boundaries.
+- Targeted UI rendering and demo-flow tests alongside the existing QR encoder
+  test and production frontend build.
+
 ## Current Limitations
 
 - The project is not production-ready and is not intended to replace a
@@ -192,7 +208,9 @@ more depth.
   work.
 - SCIM bulk, nested groups, extensions, attribute projection, POST search, and
   the complete filter grammar remain outside the supported subset.
-- The frontend is functional but is not a fully polished enterprise console.
+- The frontend is portfolio-polished but remains a demonstration console rather
+  than a production operations product with full accessibility certification,
+  localization, or large-directory virtualization.
 - Managed signing-key rotation, distributed session management, rate limiting,
   observability, high availability, and operational hardening remain future
   work.
@@ -204,12 +222,6 @@ more depth.
 - Add current screenshots and a concise visual demo narrative.
 - Keep README walkthroughs aligned with the implemented Admin Console.
 - Improve reviewer orientation without overstating product maturity.
-
-### Frontend UX Polish
-
-- Improve visual consistency, form guidance, empty states, and error recovery.
-- Add targeted UI-level automated tests for critical workflows.
-- Refine login, consent, and MFA challenge presentation.
 
 ## Later Roadmap
 

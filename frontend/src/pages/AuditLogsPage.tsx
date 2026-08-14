@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { adminApi } from '../api/adminApi';
 import { Badge } from '../components/Badge';
+import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field, Input, Select } from '../components/Form';
 import { Pagination } from '../components/Pagination';
@@ -17,12 +18,14 @@ export function AuditLogsPage() {
   const [page, setPage] = useState(0);
   const [searchParams] = useSearchParams();
   const { selectedTenantId, selectedTenant } = useTenantContext();
-  const [filters, setFilters] = useState({
+  const initialFilters = {
     action: searchParams.get('action') ?? '',
     resourceType: searchParams.get('resourceType') ?? '',
     resourceId: searchParams.get('resourceId') ?? '',
     result: (searchParams.get('result') ?? '') as AuditResult | '',
-  });
+  };
+  const [filters, setFilters] = useState(initialFilters);
+  const [draftFilters, setDraftFilters] = useState(initialFilters);
   const auditLogs = useQuery({
     queryKey: ['audit-logs', page, selectedTenantId, filters],
     queryFn: () => adminApi.auditLogs.list({
@@ -42,44 +45,45 @@ export function AuditLogsPage() {
       <PageHeader title="Audit Logs" description="Query administrative and security events without exposing sensitive values." />
       <Card title="Filters">
         {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant to load audit events for tenant-scoped exploration.</p>}
-        <div className="grid gap-3 md:grid-cols-5">
+        <form className="grid gap-3 md:grid-cols-5" onSubmit={(event) => { event.preventDefault(); setFilters(draftFilters); setPage(0); }}>
           <Field label="tenant">
             <Input value={selectedTenant?.name ?? 'No tenant selected'} disabled />
           </Field>
           {(['action', 'resourceType', 'resourceId'] as const).map((field) => (
             <Field key={field} label={field}>
               <Input
-                value={filters[field]}
-                onChange={(event) => {
-                  setFilters((current) => ({ ...current, [field]: event.target.value }));
-                  setPage(0);
-                }}
+                value={draftFilters[field]}
+                onChange={(event) => setDraftFilters((current) => ({ ...current, [field]: event.target.value }))}
               />
             </Field>
           ))}
           <Field label="result">
             <Select
-              value={filters.result}
-              onChange={(event) => {
-                setFilters((current) => ({ ...current, result: event.target.value as AuditResult | '' }));
-                setPage(0);
-              }}
+              value={draftFilters.result}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, result: event.target.value as AuditResult | '' }))}
             >
               <option value="">Any result</option>
               <option value="SUCCESS">SUCCESS</option>
               <option value="FAILURE">FAILURE</option>
             </Select>
           </Field>
-        </div>
+          <div className="flex items-end gap-2 md:col-span-5">
+            <Button type="submit" disabled={!selectedTenantId}>Apply filters</Button>
+            <Button type="button" variant="secondary" onClick={() => { const empty = { action: '', resourceType: '', resourceId: '', result: '' as AuditResult | '' }; setDraftFilters(empty); setFilters(empty); setPage(0); }}>Clear</Button>
+          </div>
+        </form>
       </Card>
       <div className="mt-4">
         <Card title="Events">
           {auditLogs.isLoading && <LoadingState />}
-          {auditLogs.isError && <ErrorState error={auditLogs.error} />}
+          {auditLogs.isError && <ErrorState error={auditLogs.error} onRetry={() => void auditLogs.refetch()} />}
           {auditLogs.data && (
             <>
               <DataTable
                 items={auditLogs.data.items}
+                getKey={(log) => log.id}
+                emptyTitle="No audit events match these filters"
+                emptyDetail="Clear one or more exact-match filters, or perform a workflow that emits a security event."
                 columns={[
                   { header: 'When', render: (log) => formatDate(log.createdAt) },
                   { header: 'Action', render: (log) => <span className="font-medium">{log.action}</span> },

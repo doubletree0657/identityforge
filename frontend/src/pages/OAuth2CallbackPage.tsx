@@ -34,7 +34,9 @@ export function OAuth2CallbackPage() {
     return <Navigate to="/" replace />;
   }
   return (
-    <main className="mx-auto max-w-xl p-6">
+    <main className="flex min-h-screen items-center justify-center bg-[#edf3f2] p-6">
+      <section className="w-full max-w-xl rounded-2xl border border-line bg-white p-7 shadow-elevated">
+        <div className="mb-5 text-sm font-semibold text-brand">IdentityForge · Secure sign-in</div>
       {error ? (
         <div className="grid gap-4">
           <ErrorState error={error} />
@@ -42,7 +44,8 @@ export function OAuth2CallbackPage() {
             Restart sign-in
           </Button>
         </div>
-      ) : <LoadingState label="Completing sign-in" />}
+      ) : <LoadingState label="Verifying authorization response and completing sign-in" />}
+      </section>
     </main>
   );
 }

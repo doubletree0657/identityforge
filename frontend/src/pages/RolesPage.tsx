@@ -5,6 +5,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field, Input, Select } from '../components/Form';
 import { Pagination } from '../components/Pagination';
+import { Notice } from '../components/Notice';
 import { ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { TenantRequired } from '../components/TenantRequired';
@@ -52,8 +53,8 @@ export function RolesPage() {
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    createRole.mutate({ tenantId: selectedTenantId, name: String(form.get('name') ?? '') });
-    event.currentTarget.reset();
+    const formElement = event.currentTarget;
+    createRole.mutate({ tenantId: selectedTenantId, name: String(form.get('name') ?? '') }, { onSuccess: () => formElement.reset() });
   }
 
   return (
@@ -65,19 +66,23 @@ export function RolesPage() {
           {!selectedTenantId && <p className="mb-3 text-sm text-slate-600">Select a tenant in the header before creating roles.</p>}
           <form onSubmit={create} className="grid gap-3">
             <Field label="Tenant"><Input value={selectedTenant?.name ?? 'No tenant selected'} disabled /></Field>
-            <Field label="Name"><Input name="name" required /></Field>
-            <Button type="submit" disabled={!selectedTenantId || !hasPermission('iam.roles.write')}>Create</Button>
+            <Field label="Name" required hint="Use a responsibility-based name such as helpdesk-operator."><Input name="name" required maxLength={160} /></Field>
+            <Button type="submit" isLoading={createRole.isPending} loadingLabel="Creating role…" disabled={!selectedTenantId || !hasPermission('iam.roles.write')}>Create role</Button>
             {createRole.isError && <ErrorState error={createRole.error} />}
+            {createRole.isSuccess && <Notice title="Role created" tone="success">Assign only permissions held by the current administrator.</Notice>}
           </form>
         </Card>
         <Card title="Roles">
           {!selectedTenantId && <p className="text-sm text-slate-600">Select a tenant to load roles and available permissions.</p>}
           {roles.isLoading && <LoadingState />}
-          {roles.isError && <ErrorState error={roles.error} />}
+          {roles.isError && <ErrorState error={roles.error} onRetry={() => void roles.refetch()} />}
           {roles.data && (
             <>
               <DataTable
                 items={roles.data.items}
+                getKey={(role) => role.id}
+                emptyTitle="No roles in this tenant"
+                emptyDetail="Create a role, attach permissions from the catalog, then assign it directly or through a group."
                 columns={[
                   { header: 'Name', render: (role) => <span className="font-medium">{role.name}</span> },
                   {

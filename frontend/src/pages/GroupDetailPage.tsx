@@ -92,10 +92,10 @@ export function GroupDetailPage() {
       <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
         <Card title="Group metadata">
           <form onSubmit={update} className="grid gap-3">
-            <Field label="Name"><Input name="name" defaultValue={group.data.name} required /></Field>
-            <Field label="Display name"><Input name="displayName" defaultValue={group.data.displayName} /></Field>
-            <Field label="Description"><Input name="description" defaultValue={group.data.description ?? ''} /></Field>
-            <Button type="submit" icon={<Save className="h-4 w-4" />}>Save group</Button>
+            <Field label="Name" required><Input name="name" defaultValue={group.data.name} required maxLength={160} /></Field>
+            <Field label="Display name" required><Input name="displayName" defaultValue={group.data.displayName} required maxLength={160} /></Field>
+            <Field label="Description"><Input name="description" defaultValue={group.data.description ?? ''} maxLength={500} /></Field>
+            <Button type="submit" icon={<Save className="h-4 w-4" />} isLoading={updateGroup.isPending} loadingLabel="Saving group…">Save group</Button>
             {updateGroup.isError && <ErrorState error={updateGroup.error} />}
           </form>
         </Card>
@@ -107,17 +107,19 @@ export function GroupDetailPage() {
             }}
             className="mb-4 flex gap-2"
           >
-            <Select name="roleId" className="flex-1">
+            <Select name="roleId" className="flex-1" required>
               <option value="">Select tenant role</option>
               {availableRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
             </Select>
             <Button type="submit" variant="secondary">Assign role</Button>
           </form>
           {roles.isLoading && <LoadingState label="Loading roles" />}
-          {roles.isError && <ErrorState error={roles.error} />}
+          {roles.isError && <ErrorState error={roles.error} onRetry={() => void roles.refetch()} />}
           <DataTable
             items={assignedRoles}
+            getKey={(role) => role.id}
             emptyTitle="No group roles"
+            emptyDetail="Assign a tenant role to make its permissions effective for every direct member."
             columns={[
               { header: 'Role', render: (role) => <span className="font-medium">{role.name}</span> },
               { header: 'Permissions', render: (role) => role.permissionIds.length },
@@ -134,17 +136,19 @@ export function GroupDetailPage() {
             }}
             className="mb-4 flex gap-2"
           >
-            <Select name="userId" className="flex-1">
+            <Select name="userId" className="flex-1" required>
               <option value="">Select tenant user</option>
               {availableUsers.map((user) => <option key={user.id} value={user.id}>{displayUser(user)}</option>)}
             </Select>
             <Button type="submit" variant="secondary">Add member</Button>
           </form>
           {users.isLoading && <LoadingState label="Loading members" />}
-          {users.isError && <ErrorState error={users.error} />}
+          {users.isError && <ErrorState error={users.error} onRetry={() => void users.refetch()} />}
           <DataTable
             items={members}
+            getKey={(user) => user.id}
             emptyTitle="No group members"
+            emptyDetail="Add tenant users directly; nested groups are intentionally unsupported."
             columns={[
               { header: 'User', render: (user) => <Link className="font-medium text-brand hover:underline" to={`/users/${user.id}`}>{user.displayName}</Link> },
               { header: 'Username', render: (user) => user.username },

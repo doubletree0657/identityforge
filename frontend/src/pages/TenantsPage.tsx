@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Field, Input, Select } from '../components/Form';
 import { Pagination } from '../components/Pagination';
+import { Notice } from '../components/Notice';
 import { DataTable } from '../components/Table';
 import { ErrorState, LoadingState } from '../components/State';
 import { TenantResponse, TenantStatus } from '../types/api';
@@ -39,11 +40,11 @@ export function TenantsPage() {
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
     createTenant.mutate({
       name: String(form.get('name') ?? ''),
       slug: String(form.get('slug') ?? ''),
-    });
-    event.currentTarget.reset();
+    }, { onSuccess: () => formElement.reset() });
   }
 
   function update(event: FormEvent<HTMLFormElement>, tenant: TenantResponse) {
@@ -64,25 +65,29 @@ export function TenantsPage() {
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
         <Card title="Create tenant">
           <form onSubmit={create} className="grid gap-3">
-            <Field label="Name">
+            <Field label="Name" required hint="Human-readable organization name, up to 120 characters.">
               <Input name="name" required maxLength={120} />
             </Field>
-            <Field label="Realm slug">
-              <Input name="slug" placeholder="acme-corp" required maxLength={63} />
+            <Field label="Realm slug" required hint="Lowercase letters, numbers, and internal hyphens. Used in realm-qualified sign-in.">
+              <Input name="slug" placeholder="acme-corp" required maxLength={63} pattern="[a-z0-9](?:[a-z0-9-]*[a-z0-9])?" title="Use lowercase letters, numbers, and internal hyphens." />
             </Field>
-            <Button type="submit" icon={<Save className="h-4 w-4" />} disabled={createTenant.isPending}>
-              Create
+            <Button type="submit" icon={<Save className="h-4 w-4" />} isLoading={createTenant.isPending} loadingLabel="Creating tenant…">
+              Create tenant
             </Button>
             {createTenant.isError && <ErrorState error={createTenant.error} />}
+            {createTenant.isSuccess && <Notice title="Tenant created" tone="success">It is now available in the global tenant context selector.</Notice>}
           </form>
         </Card>
         <Card title="Tenant directory">
           {tenants.isLoading && <LoadingState />}
-          {tenants.isError && <ErrorState error={tenants.error} />}
+          {tenants.isError && <ErrorState error={tenants.error} onRetry={() => void tenants.refetch()} />}
           {tenants.data && (
             <>
               <DataTable
                 items={tenants.data.items}
+                getKey={(tenant) => tenant.id}
+                emptyTitle="No tenants available"
+                emptyDetail="Create the first tenant to establish an isolated realm for identities and applications."
                 columns={[
                   { header: 'Name', render: (tenant) => <span className="font-medium">{tenant.name}</span> },
                   { header: 'Slug', render: (tenant) => tenant.slug },

@@ -4,8 +4,9 @@ import { adminApi } from '../api/adminApi';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Select } from '../components/Form';
-import { ErrorState, LoadingState } from '../components/State';
+import { EmptyState, ErrorState, LoadingState } from '../components/State';
 import { DataTable } from '../components/Table';
 import { useAuth } from '../context/AuthContext';
 import { useTenantContext } from '../context/TenantContext';
@@ -14,6 +15,7 @@ import { PageHeader } from './PageHeader';
 
 export function OAuth2ConsentsPage() {
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [revokeTarget, setRevokeTarget] = useState<{ clientId: string; clientName: string; userId?: string } | null>(null);
   const { hasPermission } = useAuth();
   const { selectedTenantId } = useTenantContext();
   const queryClient = useQueryClient();
@@ -34,21 +36,27 @@ export function OAuth2ConsentsPage() {
   });
   const revokeCurrentUserConsent = useMutation({
     mutationFn: adminApi.oauth2Consents.revokeMe,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['oauth2-consents'] }),
+    onSuccess: () => {
+      setRevokeTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['oauth2-consents'] });
+    },
   });
   const revokeUserConsent = useMutation({
     mutationFn: ({ clientId, userId }: { clientId: string; userId: string }) =>
       adminApi.oauth2Consents.revoke(clientId, userId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['oauth2-consents'] }),
+    onSuccess: () => {
+      setRevokeTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['oauth2-consents'] });
+    },
   });
 
   function consentTable(
     consents: OAuth2ConsentResponse[],
-    onRevoke: (clientId: string) => void,
+    onRevoke: (consent: OAuth2ConsentResponse) => void,
     canRevoke: boolean,
   ) {
     if (consents.length === 0) {
-      return <p className="text-sm text-slate-500">No OAuth2 consents found.</p>;
+      return <EmptyState title="No OAuth2 consents" detail="Consent records appear after a user approves access for a client that requires consent." />;
     }
     return (
       <DataTable
@@ -68,7 +76,7 @@ export function OAuth2ConsentsPage() {
           {
             header: 'Actions',
             render: (consent) => (
-              <Button type="button" variant="danger" disabled={!canRevoke} onClick={() => onRevoke(consent.clientId)}>
+              <Button type="button" variant="danger" disabled={!canRevoke} onClick={() => onRevoke(consent)}>
                 Revoke
               </Button>
             ),
@@ -87,10 +95,10 @@ export function OAuth2ConsentsPage() {
       <div className="grid gap-4 xl:grid-cols-2">
         <Card title="My consents">
           {currentUserConsents.isLoading && <LoadingState />}
-          {currentUserConsents.isError && <ErrorState error={currentUserConsents.error} />}
+          {currentUserConsents.isError && <ErrorState error={currentUserConsents.error} onRetry={() => void currentUserConsents.refetch()} />}
           {currentUserConsents.data && consentTable(
             currentUserConsents.data,
-            (clientId) => revokeCurrentUserConsent.mutate(clientId),
+            (consent) => setRevokeTarget({ clientId: consent.clientId, clientName: consent.clientName }),
             true,
           )}
           {revokeCurrentUserConsent.isError && <div className="mt-3"><ErrorState error={revokeCurrentUserConsent.error} /></div>}
@@ -108,18 +116,29 @@ export function OAuth2ConsentsPage() {
               ))}
             </Select>
             {!selectedTenantId && <p className="text-sm text-slate-500">Select a tenant to load users.</p>}
-            {users.isError && <ErrorState error={users.error} />}
+            {users.isError && <ErrorState error={users.error} onRetry={() => void users.refetch()} />}
           </div>
           {selectedUserConsents.isLoading && <LoadingState />}
-          {selectedUserConsents.isError && <ErrorState error={selectedUserConsents.error} />}
+          {selectedUserConsents.isError && <ErrorState error={selectedUserConsents.error} onRetry={() => void selectedUserConsents.refetch()} />}
           {selectedUserConsents.data && consentTable(
             selectedUserConsents.data,
-            (clientId) => revokeUserConsent.mutate({ clientId, userId: selectedUserId }),
+            (consent) => setRevokeTarget({ clientId: consent.clientId, clientName: consent.clientName, userId: selectedUserId }),
             hasPermission('iam.clients.write'),
           )}
           {revokeUserConsent.isError && <div className="mt-3"><ErrorState error={revokeUserConsent.error} /></div>}
         </Card>
       </div>
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={`Revoke ${revokeTarget?.clientName ?? 'application'} consent?`}
+        detail="The stored approval and associated authorization family will be removed. The user must approve the requested scopes again on a future authorization."
+        confirmLabel="Revoke consent"
+        isPending={revokeCurrentUserConsent.isPending || revokeUserConsent.isPending}
+        onCancel={() => setRevokeTarget(null)}
+        onConfirm={() => revokeTarget?.userId
+          ? revokeUserConsent.mutate({ clientId: revokeTarget.clientId, userId: revokeTarget.userId })
+          : revokeTarget && revokeCurrentUserConsent.mutate(revokeTarget.clientId)}
+      />
     </>
   );
 }
