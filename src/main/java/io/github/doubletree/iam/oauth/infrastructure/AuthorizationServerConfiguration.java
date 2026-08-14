@@ -72,6 +72,10 @@ import org.springframework.security.web.authentication.logout.CookieClearingLogo
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestHandler;
+import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
+import org.springframework.security.web.csrf.XorCsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.authorization.web.authentication.OAuth2ErrorAuthenticationFailureHandler;
@@ -100,6 +104,8 @@ public class AuthorizationServerConfiguration {
             OidcIdentityClaims oidcIdentityClaims,
             OAuth2AuthorizationLifecycleService authorizationLifecycleService,
             UserSecurityStateService securityStateService,
+            CsrfTokenRepository authenticationFlowCsrfTokenRepository,
+            CsrfTokenRequestHandler authenticationFlowCsrfTokenRequestHandler,
             @Value("${iam.session.absolute-timeout:PT8H}") Duration sessionAbsoluteTimeout) throws Exception {
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 OAuth2AuthorizationServerConfigurer.authorizationServer();
@@ -179,11 +185,14 @@ public class AuthorizationServerConfiguration {
                         .contentSecurityPolicy(csp -> csp.policyDirectives(browserContentSecurityPolicy()))
                         .referrerPolicy(referrer -> referrer
                                 .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
-                .csrf(csrf -> csrf.ignoringRequestMatchers(
-                        endpoint(HttpMethod.POST, "/oauth2/token"),
-                        endpoint(HttpMethod.POST, "/oauth2/revoke"),
-                        endpoint(HttpMethod.POST, "/oauth2/introspect"),
-                        endpoint(HttpMethod.POST, "/oauth2/device_authorization")))
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(authenticationFlowCsrfTokenRepository)
+                        .csrfTokenRequestHandler(authenticationFlowCsrfTokenRequestHandler)
+                        .ignoringRequestMatchers(
+                                endpoint(HttpMethod.POST, "/oauth2/token"),
+                                endpoint(HttpMethod.POST, "/oauth2/revoke"),
+                                endpoint(HttpMethod.POST, "/oauth2/introspect"),
+                                endpoint(HttpMethod.POST, "/oauth2/device_authorization")))
                 .addFilterAfter(
                         new SessionSecurityStateFilter(
                                 securityStateService, auditApplicationService, sessionAbsoluteTimeout),
@@ -261,9 +270,11 @@ public class AuthorizationServerConfiguration {
             AuditApplicationService auditApplicationService,
             UserSecurityStateService securityStateService,
             OAuth2AuthorizationLifecycleService authorizationLifecycleService,
+            CsrfTokenRepository authenticationFlowCsrfTokenRepository,
+            CsrfTokenRequestHandler authenticationFlowCsrfTokenRequestHandler,
             @Value("${app.admin-console.frontend-base-url}") String adminConsoleFrontendBaseUrl,
             @Value("${app.admin-console.client-id:identityforge-console}") String adminConsoleClientId,
-            @Value("${server.servlet.session.cookie.name:JSESSIONID}") String sessionCookieName,
+            @Value("${server.servlet.session.cookie.name:IDENTITYFORGE_SESSION}") String sessionCookieName,
             @Value("${iam.session.absolute-timeout:PT8H}") Duration sessionAbsoluteTimeout)
             throws Exception {
         http
@@ -297,6 +308,9 @@ public class AuthorizationServerConfiguration {
                                 .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
                 .sessionManagement(session -> session
                         .sessionFixation(fixation -> fixation.changeSessionId()))
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(authenticationFlowCsrfTokenRepository)
+                        .csrfTokenRequestHandler(authenticationFlowCsrfTokenRequestHandler))
                 .exceptionHandling(exceptions -> exceptions
                         .defaultAccessDeniedHandlerFor(
                                 authenticationFlowAccessDeniedHandler(),
@@ -696,6 +710,16 @@ public class AuthorizationServerConfiguration {
 
     private static RequestMatcher endpoint(HttpMethod method, String path) {
         return PathPatternRequestMatcher.withDefaults().matcher(method, path);
+    }
+
+    @Bean
+    CsrfTokenRepository authenticationFlowCsrfTokenRepository() {
+        return new HttpSessionCsrfTokenRepository();
+    }
+
+    @Bean
+    CsrfTokenRequestHandler authenticationFlowCsrfTokenRequestHandler() {
+        return new XorCsrfTokenRequestAttributeHandler();
     }
 
     private static org.springframework.security.web.access.AccessDeniedHandler authenticationFlowAccessDeniedHandler() {

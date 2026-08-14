@@ -18,3 +18,9 @@ iam:
 app:
   admin-console:
     frontend-base-url: http://localhost:5173
+
+server:
+  servlet:
+    session:
+      cookie:
+        name: IDENTITYFORGE_SESSION

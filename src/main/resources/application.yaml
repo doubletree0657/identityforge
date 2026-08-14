@@ -40,6 +40,7 @@ server:
       timeout: ${IAM_SESSION_IDLE_TIMEOUT:15m}
       tracking-modes: cookie
       cookie:
+        name: ${IAM_SESSION_COOKIE_NAME:IDENTITYFORGE_SESSION}
         http-only: true
         same-site: lax
         secure: ${IAM_COOKIE_SECURE:true}

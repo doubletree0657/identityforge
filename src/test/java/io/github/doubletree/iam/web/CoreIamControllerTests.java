@@ -487,7 +487,7 @@ class CoreIamControllerTests {
                                 .user(principal)))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("http://localhost:5173/login?loggedOut=true"))
-                .andExpect(header().string("Set-Cookie", containsString("JSESSIONID=;")))
+                .andExpect(header().string("Set-Cookie", containsString("IDENTITYFORGE_SESSION=;")))
                 .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
 
         verify(auditApplicationService).recordEvent(TENANT_ID, "USER_LOGGED_OUT", "USER", USER_ID);
